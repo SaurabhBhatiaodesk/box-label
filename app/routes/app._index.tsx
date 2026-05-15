@@ -24,8 +24,14 @@ type Order = {
   phone: string;
 
   deliveryMethod: string;
-  checkoutMethod: string;
   customerTimeZone: string;
+  deliveryPostalCode: string;
+  locationId: string;
+  shopifyLocationId: string;
+  deliveryDate: string;
+  deliveryDay: string;
+
+  checkoutMethod: string;
   deliveryLocation: string;
 
   pickupLocationId: string;
@@ -37,8 +43,6 @@ type Order = {
   pickupLocationCountry: string;
 
   pickupDetails: string;
-  deliveryDate: string;
-  deliveryDay: string;
   driverName: string;
 };
 
@@ -94,6 +98,82 @@ export const loader = async ({ request }: { request: Request }) => {
       const order = edge.node;
       const shipping = order.shippingAddress;
 
+      const deliveryMethod = getOrderValue(order, "Delivery Method", [
+        "Delivery Method",
+        "delivery_method",
+        "deliveryMethod",
+        "delivery-method",
+      ]);
+
+      const customerTimeZone = getOrderValue(order, "Customer TimeZone", [
+        "Customer TimeZone",
+        "Customer Timezone",
+        "customer_timezone",
+        "customerTimeZone",
+        "customer-timezone",
+      ]);
+
+      const deliveryPostalCode = getOrderValue(order, "Delivery Postal Code", [
+        "Delivery Postal Code",
+        "delivery_postal_code",
+        "deliveryPostalCode",
+        "delivery-postal-code",
+      ]);
+
+      const locationId = getOrderValue(order, "locationId", [
+        "locationId",
+        "locationid",
+        "Location ID",
+        "Location Id",
+        "location_id",
+        "location-id",
+      ]);
+
+      const shopifyLocationId = getOrderValue(order, "shopifyLocationId", [
+        "shopifyLocationId",
+        "shopifylocationid",
+        "Shopify Location ID",
+        "Shopify Location Id",
+        "shopify_location_id",
+        "shopify-location-id",
+      ]);
+
+      const deliveryDate = getOrderValue(order, "Delivery Date", [
+        "Delivery Date",
+        "delivery_date",
+        "deliveryDate",
+        "delivery-date",
+      ]);
+
+      const deliveryDay = getOrderValue(order, "Delivery Day", [
+        "Delivery Day",
+        "delivery_day",
+        "deliveryDay",
+        "delivery-day",
+      ]);
+
+      const checkoutMethod = getOrderValue(order, "Checkout-Method", [
+        "Checkout-Method",
+        "Checkout Method",
+        "checkout_method",
+        "checkoutMethod",
+      ]);
+
+      const deliveryLocation = getOrderValue(order, "Delivery Location", [
+        "Delivery Location",
+        "delivery_location",
+        "deliveryLocation",
+        "delivery-location",
+      ]);
+
+      const pickupLocationId = getOrderValue(order, "Pickup-Location-Id", [
+        "Pickup-Location-Id",
+        "Pickup Location Id",
+        "Pickup Location ID",
+        "pickup_location_id",
+        "pickupLocationId",
+      ]);
+
       const pickupLocationCompany = getOrderValue(order, "Pickup-Location-Company", [
         "Pickup-Location-Company",
         "Pickup Location Company",
@@ -144,18 +224,19 @@ export const loader = async ({ request }: { request: Request }) => {
         "pickupLocationCountry",
       ]);
 
-      const checkoutMethod = getOrderValue(order, "Checkout-Method", [
-        "Checkout-Method",
-        "Checkout Method",
-        "checkout_method",
-        "checkoutMethod",
+      const pickupDetails = getOrderValue(order, "Pickup Details", [
+        "Pickup Details",
+        "pickup_details",
+        "pickupDetails",
+        "pickup-details",
       ]);
 
-      const deliveryMethod = getOrderValue(order, "Delivery Method", [
-        "Delivery Method",
-        "delivery_method",
-        "deliveryMethod",
-        "delivery-method",
+      const driverName = getOrderValue(order, "Driver", [
+        "Driver",
+        "driver",
+        "Driver Name",
+        "driver_name",
+        "driverName",
       ]);
 
       return {
@@ -181,30 +262,17 @@ export const loader = async ({ request }: { request: Request }) => {
         phone: shipping?.phone || order.customer?.phone || "",
 
         deliveryMethod,
+        customerTimeZone,
+        deliveryPostalCode,
+        locationId,
+        shopifyLocationId,
+        deliveryDate,
+        deliveryDay,
+
         checkoutMethod,
+        deliveryLocation,
 
-        customerTimeZone: getOrderValue(order, "Customer TimeZone", [
-          "Customer TimeZone",
-          "Customer Timezone",
-          "customer_timezone",
-          "customerTimeZone",
-        ]),
-
-        deliveryLocation: getOrderValue(order, "Delivery Location", [
-          "Delivery Location",
-          "delivery_location",
-          "deliveryLocation",
-          "delivery-location",
-        ]),
-
-        pickupLocationId: getOrderValue(order, "Pickup-Location-Id", [
-          "Pickup-Location-Id",
-          "Pickup Location Id",
-          "Pickup Location ID",
-          "pickup_location_id",
-          "pickupLocationId",
-        ]),
-
+        pickupLocationId,
         pickupLocationCompany,
         pickupLocationAddressLine1,
         pickupLocationCity,
@@ -212,34 +280,8 @@ export const loader = async ({ request }: { request: Request }) => {
         pickupLocationPostalCode,
         pickupLocationCountry,
 
-        deliveryDate: getOrderValue(order, "Delivery Date", [
-          "Delivery Date",
-          "delivery_date",
-          "deliveryDate",
-          "delivery-date",
-        ]),
-
-        deliveryDay: getOrderValue(order, "Delivery Day", [
-          "Delivery Day",
-          "delivery_day",
-          "deliveryDay",
-          "delivery-day",
-        ]),
-
-        pickupDetails: getOrderValue(order, "Pickup Details", [
-          "Pickup Details",
-          "pickup_details",
-          "pickupDetails",
-          "pickup-details",
-        ]),
-
-        driverName: getOrderValue(order, "Driver", [
-          "Driver",
-          "driver",
-          "Driver Name",
-          "driver_name",
-          "driverName",
-        ]),
+        pickupDetails,
+        driverName,
       };
     }) || [];
 
@@ -533,7 +575,7 @@ export default function Index() {
                   <th>Address</th>
                   <th>Delivery Date</th>
                   <th>Delivery Method</th>
-                  <th>Pickup / Location</th>
+                  <th>Additional Details</th>
                   <th>Driver</th>
                 </tr>
               </thead>
@@ -562,27 +604,67 @@ export default function Index() {
                       ) : null}
                     </td>
 
-                    <td>
-                      {order.deliveryMethod || order.checkoutMethod || "-"}
-                    </td>
+                    <td>{order.deliveryMethod || "-"}</td>
 
                     <td>
+                      {order.customerTimeZone ? (
+                        <div className="small-text">
+                          Timezone: {order.customerTimeZone}
+                        </div>
+                      ) : null}
+
+                      {order.deliveryPostalCode ? (
+                        <div className="small-text">
+                          Delivery Postal Code: {order.deliveryPostalCode}
+                        </div>
+                      ) : null}
+
+                      {order.locationId ? (
+                        <div className="small-text">
+                          locationId: {order.locationId}
+                        </div>
+                      ) : null}
+
+                      {order.shopifyLocationId ? (
+                        <div className="small-text">
+                          shopifyLocationId: {order.shopifyLocationId}
+                        </div>
+                      ) : null}
+
+                      {order.checkoutMethod ? (
+                        <div className="small-text">
+                          Checkout Method: {order.checkoutMethod}
+                        </div>
+                      ) : null}
+
                       {order.pickupLocationCompany ||
-                        order.deliveryLocation ||
-                        order.pickupDetails ||
-                        "-"}
+                      order.deliveryLocation ||
+                      order.pickupDetails ? (
+                        <div className="small-text">
+                          Pickup / Location:{" "}
+                          {order.pickupLocationCompany ||
+                            order.deliveryLocation ||
+                            order.pickupDetails}
+                        </div>
+                      ) : null}
 
                       {formatPickupAddress(order) ? (
                         <div className="small-text">
-                          {formatPickupAddress(order)}
+                          Pickup Address: {formatPickupAddress(order)}
                         </div>
                       ) : null}
 
-                      {order.pickupLocationId ? (
-                        <div className="small-text">
-                          ID: {order.pickupLocationId}
-                        </div>
-                      ) : null}
+                      {!order.customerTimeZone &&
+                      !order.deliveryPostalCode &&
+                      !order.locationId &&
+                      !order.shopifyLocationId &&
+                      !order.checkoutMethod &&
+                      !order.pickupLocationCompany &&
+                      !order.deliveryLocation &&
+                      !order.pickupDetails &&
+                      !formatPickupAddress(order)
+                        ? "-"
+                        : null}
                     </td>
 
                     <td>{order.driverName || "-"}</td>
@@ -619,10 +701,37 @@ export default function Index() {
                 </div>
 
                 <div className="label-details">
-                  {order.deliveryMethod || order.checkoutMethod ? (
+                  {order.deliveryMethod ? (
                     <>
-                      Delivery Method:{" "}
-                      {order.deliveryMethod || order.checkoutMethod}
+                      Delivery Method: {order.deliveryMethod}
+                      <br />
+                    </>
+                  ) : null}
+
+                  {order.customerTimeZone ? (
+                    <>
+                      Customer TimeZone: {order.customerTimeZone}
+                      <br />
+                    </>
+                  ) : null}
+
+                  {order.deliveryPostalCode ? (
+                    <>
+                      Delivery Postal Code: {order.deliveryPostalCode}
+                      <br />
+                    </>
+                  ) : null}
+
+                  {order.locationId ? (
+                    <>
+                      locationId: {order.locationId}
+                      <br />
+                    </>
+                  ) : null}
+
+                  {order.shopifyLocationId ? (
+                    <>
+                      shopifyLocationId: {order.shopifyLocationId}
                       <br />
                     </>
                   ) : null}
@@ -739,6 +848,7 @@ function normalizeKey(value: string) {
   return value
     .toLowerCase()
     .replace(/[_-]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/\s+/g, " ")
     .trim();
 }
