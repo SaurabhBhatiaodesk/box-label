@@ -1,6 +1,6 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "a49f6523029cac429258f989812df62e"
+client_id = "b68f5c9baeae73f86476e8c260f563fb"
 name = "box-label-app"
 application_url = "https://boxlabelapp-3335cc051f93.herokuapp.com"
 embedded = true
