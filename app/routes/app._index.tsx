@@ -24,14 +24,21 @@ type Order = {
   phone: string;
 
   deliveryMethod: string;
+  checkoutMethod: string;
   customerTimeZone: string;
   deliveryLocation: string;
-  locationId: string;
-  customAttribute2: string;
+
+  pickupLocationId: string;
   pickupLocationCompany: string;
+  pickupLocationAddressLine1: string;
+  pickupLocationCity: string;
+  pickupLocationRegion: string;
+  pickupLocationPostalCode: string;
+  pickupLocationCountry: string;
+
+  pickupDetails: string;
   deliveryDate: string;
   deliveryDay: string;
-  pickupDetails: string;
   driverName: string;
 };
 
@@ -78,10 +85,78 @@ export const loader = async ({ request }: { request: Request }) => {
 
   const data = await response.json();
 
+  if (data?.errors) {
+    console.error("Shopify GraphQL errors:", JSON.stringify(data.errors, null, 2));
+  }
+
   const orders: Order[] =
     data?.data?.orders?.edges?.map((edge: any) => {
       const order = edge.node;
       const shipping = order.shippingAddress;
+
+      const pickupLocationCompany = getOrderValue(order, "Pickup-Location-Company", [
+        "Pickup-Location-Company",
+        "Pickup Location Company",
+        "pickup_location_company",
+        "pickupLocationCompany",
+      ]);
+
+      const pickupLocationAddressLine1 = getOrderValue(
+        order,
+        "Pickup-Location-Address-Line-1",
+        [
+          "Pickup-Location-Address-Line-1",
+          "Pickup Location Address Line 1",
+          "pickup_location_address_line_1",
+          "pickupLocationAddressLine1",
+        ],
+      );
+
+      const pickupLocationCity = getOrderValue(order, "Pickup-Location-City", [
+        "Pickup-Location-City",
+        "Pickup Location City",
+        "pickup_location_city",
+        "pickupLocationCity",
+      ]);
+
+      const pickupLocationRegion = getOrderValue(order, "Pickup-Location-Region", [
+        "Pickup-Location-Region",
+        "Pickup Location Region",
+        "pickup_location_region",
+        "pickupLocationRegion",
+      ]);
+
+      const pickupLocationPostalCode = getOrderValue(
+        order,
+        "Pickup-Location-Postal-Code",
+        [
+          "Pickup-Location-Postal-Code",
+          "Pickup Location Postal Code",
+          "pickup_location_postal_code",
+          "pickupLocationPostalCode",
+        ],
+      );
+
+      const pickupLocationCountry = getOrderValue(order, "Pickup-Location-Country", [
+        "Pickup-Location-Country",
+        "Pickup Location Country",
+        "pickup_location_country",
+        "pickupLocationCountry",
+      ]);
+
+      const checkoutMethod = getOrderValue(order, "Checkout-Method", [
+        "Checkout-Method",
+        "Checkout Method",
+        "checkout_method",
+        "checkoutMethod",
+      ]);
+
+      const deliveryMethod = getOrderValue(order, "Delivery Method", [
+        "Delivery Method",
+        "delivery_method",
+        "deliveryMethod",
+        "delivery-method",
+      ]);
 
       return {
         id: order.id,
@@ -105,12 +180,8 @@ export const loader = async ({ request }: { request: Request }) => {
         zip: shipping?.zip || "",
         phone: shipping?.phone || order.customer?.phone || "",
 
-        deliveryMethod: getOrderValue(order, "Delivery Method", [
-          "Delivery Method",
-          "delivery_method",
-          "deliveryMethod",
-          "delivery-method",
-        ]),
+        deliveryMethod,
+        checkoutMethod,
 
         customerTimeZone: getOrderValue(order, "Customer TimeZone", [
           "Customer TimeZone",
@@ -126,26 +197,20 @@ export const loader = async ({ request }: { request: Request }) => {
           "delivery-location",
         ]),
 
-        locationId: getOrderValue(order, "locationId", [
-          "locationId",
-          "Location ID",
-          "location_id",
-          "location-id",
+        pickupLocationId: getOrderValue(order, "Pickup-Location-Id", [
+          "Pickup-Location-Id",
+          "Pickup Location Id",
+          "Pickup Location ID",
+          "pickup_location_id",
+          "pickupLocationId",
         ]),
 
-        customAttribute2: getOrderValue(order, "Custom-Attribute-2", [
-          "Custom-Attribute-2",
-          "Custom Attribute 2",
-          "custom_attribute_2",
-          "customAttribute2",
-        ]),
-
-        pickupLocationCompany: getOrderValue(order, "Pickup-Location-Company", [
-          "Pickup-Location-Company",
-          "Pickup Location Company",
-          "pickup_location_company",
-          "pickupLocationCompany",
-        ]),
+        pickupLocationCompany,
+        pickupLocationAddressLine1,
+        pickupLocationCity,
+        pickupLocationRegion,
+        pickupLocationPostalCode,
+        pickupLocationCountry,
 
         deliveryDate: getOrderValue(order, "Delivery Date", [
           "Delivery Date",
@@ -298,6 +363,7 @@ export default function Index() {
           font-size: 12px;
           color: #4b5563;
           line-height: 1.4;
+          margin-top: 3px;
         }
 
         .print-area {
@@ -487,12 +553,7 @@ export default function Index() {
 
                     <td>{order.customerName || "No customer"}</td>
 
-                    <td>
-                      {order.address || "-"}
-                      {order.city ? `, ${order.city}` : ""}
-                      {order.province ? `, ${order.province}` : ""}
-                      {order.zip ? `, ${order.zip}` : ""}
-                    </td>
+                    <td>{formatShippingAddress(order) || "-"}</td>
 
                     <td>
                       {order.deliveryDate || "-"}
@@ -501,17 +562,25 @@ export default function Index() {
                       ) : null}
                     </td>
 
-                    <td>{order.deliveryMethod || "-"}</td>
+                    <td>
+                      {order.deliveryMethod || order.checkoutMethod || "-"}
+                    </td>
 
                     <td>
                       {order.pickupLocationCompany ||
-                        order.pickupDetails ||
                         order.deliveryLocation ||
+                        order.pickupDetails ||
                         "-"}
 
-                      {order.deliveryLocation ? (
+                      {formatPickupAddress(order) ? (
                         <div className="small-text">
-                          {order.deliveryLocation}
+                          {formatPickupAddress(order)}
+                        </div>
+                      ) : null}
+
+                      {order.pickupLocationId ? (
+                        <div className="small-text">
+                          ID: {order.pickupLocationId}
                         </div>
                       ) : null}
                     </td>
@@ -541,10 +610,7 @@ export default function Index() {
                 </div>
 
                 <div className="label-address">
-                  {order.address}
-                  {order.city ? `, ${order.city}` : ""}
-                  {order.province ? `, ${order.province}` : ""}
-                  {order.zip ? `, ${order.zip}` : ""}
+                  {formatShippingAddress(order)}
                 </div>
 
                 <div className="label-date">
@@ -553,9 +619,10 @@ export default function Index() {
                 </div>
 
                 <div className="label-details">
-                  {order.deliveryMethod ? (
+                  {order.deliveryMethod || order.checkoutMethod ? (
                     <>
-                      Delivery Method: {order.deliveryMethod}
+                      Delivery Method:{" "}
+                      {order.deliveryMethod || order.checkoutMethod}
                       <br />
                     </>
                   ) : null}
@@ -567,9 +634,9 @@ export default function Index() {
                     </>
                   ) : null}
 
-                  {order.deliveryLocation ? (
+                  {formatPickupAddress(order) ? (
                     <>
-                      Delivery Location: {order.deliveryLocation}
+                      Pickup Address: {formatPickupAddress(order)}
                       <br />
                     </>
                   ) : null}
@@ -597,6 +664,30 @@ export default function Index() {
       </div>
     </div>
   );
+}
+
+function formatShippingAddress(order: Order) {
+  return [
+    order.address,
+    order.city,
+    order.province,
+    order.zip,
+    order.country,
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function formatPickupAddress(order: Order) {
+  return [
+    order.pickupLocationAddressLine1,
+    order.pickupLocationCity,
+    order.pickupLocationRegion,
+    order.pickupLocationPostalCode,
+    order.pickupLocationCountry,
+  ]
+    .filter(Boolean)
+    .join(", ");
 }
 
 function getOrderValue(
@@ -645,7 +736,11 @@ function getNoteValue(note: string, key: string) {
 }
 
 function normalizeKey(value: string) {
-  return value.toLowerCase().replace(/\s+/g, " ").trim();
+  return value
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function chunkArray<T>(array: T[], size: number): T[][] {
@@ -655,6 +750,5 @@ function chunkArray<T>(array: T[], size: number): T[][] {
     result.push(array.slice(i, i + size));
   }
 
-  
   return result;
-}   
+}
