@@ -268,6 +268,10 @@ export default function DriversPage() {
     return orders.slice(0, Number(ordersLimit));
   }, [orders, ordersLimit]);
 
+  const assignedOrdersCount = useMemo(() => {
+    return orders.filter((order) => order.assignedDriverName).length;
+  }, [orders]);
+
   const isSubmitting = navigation.state !== "idle";
 
   const toggleOrder = (orderId: string) => {
@@ -288,351 +292,649 @@ export default function DriversPage() {
   };
 
   return (
-    <div className="driver-page">
+    <div className="page-shell">
       <style>{`
-        .driver-page {
+        .page-shell {
+          min-height: 100vh;
           padding: 24px;
           background: #f6f6f7;
-          min-height: 100vh;
+          color: #202223;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
         }
 
-        .driver-header {
+        .page-container {
+          max-width: 1360px;
+          margin: 0 auto;
+        }
+
+        .page-header {
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
           gap: 16px;
-          flex-wrap: wrap;
-          margin-bottom: 20px;
-        }
-
-        .driver-card {
-          background: #fff;
-          border: 1px solid #d9d9d9;
-          border-radius: 10px;
-          padding: 18px;
           margin-bottom: 18px;
         }
 
-        .driver-grid {
+        .eyebrow {
+          font-size: 12px;
+          font-weight: 700;
+          color: #6d7175;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          margin-bottom: 6px;
+        }
+
+        .page-title {
+          margin: 0;
+          font-size: 24px;
+          line-height: 32px;
+          font-weight: 750;
+          color: #202223;
+        }
+
+        .page-description {
+          margin: 6px 0 0;
+          color: #6d7175;
+          font-size: 14px;
+          line-height: 20px;
+        }
+
+        .summary-grid {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 18px;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 14px;
+          margin-bottom: 16px;
+        }
+
+        .summary-card {
+          background: #fff;
+          border: 1px solid #e1e3e5;
+          border-radius: 12px;
+          padding: 16px;
+          box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+        }
+
+        .summary-label {
+          font-size: 13px;
+          color: #6d7175;
+          margin-bottom: 6px;
+        }
+
+        .summary-value {
+          font-size: 26px;
+          line-height: 32px;
+          font-weight: 750;
+          color: #202223;
+        }
+
+        .grid-two {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+          gap: 16px;
+          margin-bottom: 16px;
+        }
+
+        .card {
+          background: #fff;
+          border: 1px solid #e1e3e5;
+          border-radius: 12px;
+          overflow: hidden;
+          box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+        }
+
+        .card-header {
+          padding: 16px 18px;
+          border-bottom: 1px solid #e1e3e5;
+          background: #fff;
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .card-title {
+          margin: 0;
+          font-size: 16px;
+          line-height: 24px;
+          font-weight: 750;
+        }
+
+        .card-subtitle {
+          margin: 4px 0 0;
+          color: #6d7175;
+          font-size: 13px;
+          line-height: 18px;
+        }
+
+        .card-body {
+          padding: 18px;
         }
 
         .form-grid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 12px;
+          gap: 14px;
+        }
+
+        .field.full {
+          grid-column: 1 / -1;
         }
 
         .field label {
           display: block;
           font-size: 13px;
-          font-weight: 700;
+          line-height: 18px;
+          font-weight: 650;
           margin-bottom: 6px;
         }
 
         .field input,
         .field textarea,
-        .field select {
+        .field select,
+        .toolbar-select {
           width: 100%;
-          border: 1px solid #c9cccf;
-          border-radius: 6px;
-          padding: 10px;
+          border: 1px solid #babfc3;
+          border-radius: 8px;
+          background: #fff;
+          color: #202223;
+          font-size: 14px;
+          line-height: 20px;
+          padding: 9px 11px;
           box-sizing: border-box;
+          outline: none;
         }
 
-        .full-width {
-          grid-column: 1 / -1;
+        .field input:focus,
+        .field textarea:focus,
+        .field select:focus,
+        .toolbar-select:focus {
+          border-color: #2c6ecb;
+          box-shadow: 0 0 0 1px #2c6ecb;
         }
 
-        .button-row {
+        .field textarea {
+          resize: vertical;
+          min-height: 74px;
+        }
+
+        .actions {
           display: flex;
           align-items: center;
           gap: 10px;
           flex-wrap: wrap;
-          margin-top: 14px;
+          margin-top: 16px;
         }
 
         .button {
-          background: #111827;
+          min-height: 36px;
+          padding: 8px 14px;
+          border-radius: 8px;
+          border: 1px solid #202223;
+          background: #202223;
           color: #fff;
-          border: 0;
-          border-radius: 6px;
-          padding: 10px 16px;
+          font-size: 14px;
+          font-weight: 650;
           cursor: pointer;
-          font-weight: 700;
+          box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+        }
+
+        .button:hover {
+          background: #111827;
+        }
+
+        .button:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
         }
 
         .button-secondary {
-          background: #f3f4f6;
-          color: #111827;
-          border: 1px solid #d1d5db;
-          border-radius: 6px;
-          padding: 10px 16px;
+          min-height: 36px;
+          padding: 8px 14px;
+          border-radius: 8px;
+          border: 1px solid #c9cccf;
+          background: #fff;
+          color: #202223;
+          font-size: 14px;
+          font-weight: 650;
           cursor: pointer;
-          font-weight: 700;
+        }
+
+        .button-secondary:hover {
+          background: #f6f6f7;
         }
 
         .message {
-          padding: 10px 12px;
-          border-radius: 6px;
+          border-radius: 10px;
+          padding: 12px 14px;
           margin-bottom: 16px;
-          font-weight: 600;
+          font-size: 14px;
+          line-height: 20px;
+          font-weight: 650;
         }
 
         .message-success {
-          background: #ecfdf3;
-          color: #027a48;
-          border: 1px solid #abefc6;
+          background: #f1f8f5;
+          border: 1px solid #aee9d1;
+          color: #008060;
         }
 
         .message-error {
-          background: #fef3f2;
-          color: #b42318;
-          border: 1px solid #fecdca;
+          background: #fff4f4;
+          border: 1px solid #fed3d1;
+          color: #d72c0d;
         }
 
-        table {
+        .table-wrap {
+          overflow-x: auto;
           width: 100%;
-          border-collapse: collapse;
-          margin-top: 14px;
         }
 
-        th,
-        td {
-          border-bottom: 1px solid #e5e7eb;
-          padding: 11px;
+        .data-table {
+          width: 100%;
+          border-collapse: separate;
+          border-spacing: 0;
+        }
+
+        .data-table th {
+          background: #f6f6f7;
+          border-bottom: 1px solid #e1e3e5;
+          color: #6d7175;
+          font-size: 12px;
+          line-height: 16px;
+          font-weight: 750;
           text-align: left;
-          font-size: 14px;
+          padding: 10px 12px;
+          white-space: nowrap;
+        }
+
+        .data-table td {
+          border-bottom: 1px solid #e1e3e5;
+          color: #202223;
+          font-size: 13px;
+          line-height: 18px;
+          padding: 12px;
           vertical-align: top;
         }
 
-        th {
-          background: #f9fafb;
-          font-weight: 700;
+        .data-table tbody tr:hover {
+          background: #fafafa;
         }
 
-        .small-text {
+        .data-table tbody tr:last-child td {
+          border-bottom: 0;
+        }
+
+        .selected-row {
+          background: #f2f7ff !important;
+        }
+
+        .primary-text {
+          font-weight: 650;
+        }
+
+        .muted-text {
+          color: #6d7175;
           font-size: 12px;
-          color: #4b5563;
-          margin-top: 4px;
-          line-height: 1.35;
+          line-height: 17px;
+          margin-top: 2px;
         }
 
-        @media (max-width: 900px) {
-          .driver-grid,
+        .badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 3px 8px;
+          border-radius: 999px;
+          background: #eaf4ff;
+          color: #1f5199;
+          border: 1px solid #b4d7ff;
+          font-size: 12px;
+          line-height: 16px;
+          font-weight: 650;
+          max-width: 100%;
+        }
+
+        .badge-muted {
+          background: #f6f6f7;
+          color: #6d7175;
+          border-color: #e1e3e5;
+        }
+
+        .empty-state {
+          padding: 28px 18px;
+          text-align: center;
+          color: #6d7175;
+          font-size: 14px;
+          line-height: 20px;
+        }
+
+        .assign-row {
+          display: grid;
+          grid-template-columns: minmax(240px, 440px) auto;
+          gap: 12px;
+          align-items: end;
+          margin-bottom: 16px;
+        }
+
+        .toolbar {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .toolbar-select {
+          width: auto;
+          min-width: 145px;
+          padding: 8px 10px;
+          font-size: 13px;
+        }
+
+        .checkbox-cell {
+          width: 44px;
+        }
+
+        .order-checkbox {
+          width: 16px;
+          height: 16px;
+          cursor: pointer;
+        }
+
+        .address-cell {
+          max-width: 420px;
+        }
+
+        @media (max-width: 1000px) {
+          .summary-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .grid-two {
+            grid-template-columns: 1fr;
+          }
+
+          .assign-row {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        @media (max-width: 680px) {
+          .page-shell {
+            padding: 16px;
+          }
+
+          .summary-grid,
           .form-grid {
             grid-template-columns: 1fr;
+          }
+
+          .page-header {
+            flex-direction: column;
           }
         }
       `}</style>
 
-      <div className="driver-header">
-        <div>
-          <h1>Driver & Vehicle</h1>
-          <p>Add drivers/vehicles and assign selected orders to the correct driver.</p>
-        </div>
-      </div>
-
-      {actionData?.message ? (
-        <div className="message message-success">{actionData.message}</div>
-      ) : null}
-
-      {actionData?.error ? (
-        <div className="message message-error">{actionData.error}</div>
-      ) : null}
-
-      <div className="driver-grid">
-        <div className="driver-card">
-          <h2>Add Driver / Vehicle</h2>
-
-          <Form method="post">
-            <input type="hidden" name="intent" value="createDriver" />
-
-            <div className="form-grid">
-              <div className="field">
-                <label htmlFor="name">Driver Name *</label>
-                <input id="name" name="name" required />
-              </div>
-
-              <div className="field">
-                <label htmlFor="phone">Phone</label>
-                <input id="phone" name="phone" />
-              </div>
-
-              <div className="field">
-                <label htmlFor="vehicleNumber">Vehicle Number</label>
-                <input id="vehicleNumber" name="vehicleNumber" />
-              </div>
-
-              <div className="field">
-                <label htmlFor="vehicleType">Vehicle Type</label>
-                <input id="vehicleType" name="vehicleType" placeholder="Van, Truck, Car" />
-              </div>
-
-              <div className="field full-width">
-                <label htmlFor="notes">Notes</label>
-                <textarea id="notes" name="notes" rows={3} />
-              </div>
-            </div>
-
-            <div className="button-row">
-              <button className="button" type="submit" disabled={isSubmitting}>
-                Add Driver
-              </button>
-            </div>
-          </Form>
-        </div>
-
-        <div className="driver-card">
-          <h2>Saved Drivers</h2>
-
-          {drivers.length === 0 ? (
-            <p>No drivers added yet.</p>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Driver</th>
-                  <th>Vehicle</th>
-                  <th>Notes</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {drivers.map((driver) => (
-                  <tr key={driver.id}>
-                    <td>
-                      <b>{driver.name}</b>
-                      {driver.phone ? <div className="small-text">{driver.phone}</div> : null}
-                    </td>
-
-                    <td>
-                      {[driver.vehicleNumber, driver.vehicleType].filter(Boolean).join(" - ") ||
-                        "-"}
-                    </td>
-
-                    <td>{driver.notes || "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-
-      <div className="driver-card">
-        <div className="driver-header">
+      <div className="page-container">
+        <div className="page-header">
           <div>
-            <h2>Assign Orders</h2>
-            <p>
-              Showing {visibleOrders.length} orders. Selected {selectedOrderIds.length} orders.
+            <div className="eyebrow">Delivery setup</div>
+            <h1 className="page-title">Driver & Vehicle</h1>
+            <p className="page-description">
+              Add drivers, save vehicle details, and assign selected delivery orders before printing.
             </p>
           </div>
+        </div>
 
-          <div className="button-row">
-            <select
-              value={ordersLimit}
-              onChange={(event) => {
-                setOrdersLimit(event.target.value);
-                setSelectedOrderIds([]);
-              }}
-            >
-              <option value="5">Show 5 orders</option>
-              <option value="10">Show 10 orders</option>
-              <option value="20">Show 20 orders</option>
-              <option value="50">Show 50 orders</option>
-            </select>
+        {actionData?.message ? (
+          <div className="message message-success">{actionData.message}</div>
+        ) : null}
 
-            <button className="button-secondary" type="button" onClick={toggleAll}>
-              {selectedOrderIds.length === visibleOrders.length ? "Unselect All" : "Select All"}
-            </button>
+        {actionData?.error ? (
+          <div className="message message-error">{actionData.error}</div>
+        ) : null}
+
+        <div className="summary-grid">
+          <div className="summary-card">
+            <div className="summary-label">Saved drivers</div>
+            <div className="summary-value">{drivers.length}</div>
+          </div>
+
+          <div className="summary-card">
+            <div className="summary-label">Orders loaded</div>
+            <div className="summary-value">{orders.length}</div>
+          </div>
+
+          <div className="summary-card">
+            <div className="summary-label">Assigned orders</div>
+            <div className="summary-value">{assignedOrdersCount}</div>
+          </div>
+
+          <div className="summary-card">
+            <div className="summary-label">Selected orders</div>
+            <div className="summary-value">{selectedOrderIds.length}</div>
           </div>
         </div>
 
-        <Form method="post">
-          <input type="hidden" name="intent" value="assignOrders" />
+        <div className="grid-two">
+          <div className="card">
+            <div className="card-header">
+              <div>
+                <h2 className="card-title">Add Driver / Vehicle</h2>
+                <p className="card-subtitle">Create a driver profile for order assignment.</p>
+              </div>
+            </div>
 
-          <div className="form-grid">
-            <div className="field">
-              <label htmlFor="driverId">Select Driver</label>
-              <select id="driverId" name="driverId" required>
-                <option value="">Choose driver</option>
-                {drivers.map((driver) => (
-                  <option key={driver.id} value={driver.id}>
-                    {driver.name}
-                    {driver.vehicleNumber ? ` - ${driver.vehicleNumber}` : ""}
-                  </option>
-                ))}
-              </select>
+            <div className="card-body">
+              <Form method="post">
+                <input type="hidden" name="intent" value="createDriver" />
+
+                <div className="form-grid">
+                  <div className="field">
+                    <label htmlFor="name">Driver Name *</label>
+                    <input id="name" name="name" required placeholder="e.g. John Smith" />
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor="phone">Phone</label>
+                    <input id="phone" name="phone" placeholder="e.g. 0480 000 000" />
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor="vehicleNumber">Vehicle Number</label>
+                    <input id="vehicleNumber" name="vehicleNumber" placeholder="e.g. ABC 123" />
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor="vehicleType">Vehicle Type</label>
+                    <input id="vehicleType" name="vehicleType" placeholder="Van, Truck, Car" />
+                  </div>
+
+                  <div className="field full">
+                    <label htmlFor="notes">Notes</label>
+                    <textarea id="notes" name="notes" rows={3} placeholder="Optional notes" />
+                  </div>
+                </div>
+
+                <div className="actions">
+                  <button className="button" type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? "Saving..." : "Add Driver"}
+                  </button>
+                </div>
+              </Form>
             </div>
           </div>
 
-          {selectedOrderIds.map((orderId) => (
-            <input key={orderId} type="hidden" name="orderIds" value={orderId} />
-          ))}
+          <div className="card">
+            <div className="card-header">
+              <div>
+                <h2 className="card-title">Saved Drivers</h2>
+                <p className="card-subtitle">Available drivers and vehicle details.</p>
+              </div>
+            </div>
 
-          {visibleOrders.length === 0 ? (
-            <p>No orders found.</p>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Select</th>
-                  <th>Order</th>
-                  <th>Customer</th>
-                  <th>Address</th>
-                  <th>Delivery</th>
-                  <th>Current Driver</th>
-                </tr>
-              </thead>
+            {drivers.length === 0 ? (
+              <div className="empty-state">No drivers added yet.</div>
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Driver</th>
+                      <th>Vehicle</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
 
-              <tbody>
-                {visibleOrders.map((order) => (
-                  <tr key={order.id}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={selectedOrderIds.includes(order.id)}
-                        onChange={() => toggleOrder(order.id)}
-                      />
-                    </td>
+                  <tbody>
+                    {drivers.map((driver) => (
+                      <tr key={driver.id}>
+                        <td>
+                          <div className="primary-text">{driver.name}</div>
+                          {driver.phone ? <div className="muted-text">{driver.phone}</div> : null}
+                        </td>
 
-                    <td>{order.name}</td>
+                        <td>
+                          {driver.vehicleNumber ? (
+                            <span className="badge">{driver.vehicleNumber}</span>
+                          ) : (
+                            <span className="badge badge-muted">No vehicle</span>
+                          )}
+                          {driver.vehicleType ? <div className="muted-text">{driver.vehicleType}</div> : null}
+                        </td>
 
-                    <td>{order.customerName || "No customer"}</td>
-
-                    <td>{order.address || "-"}</td>
-
-                    <td>
-                      {order.deliveryDate || "-"}
-                      {order.deliveryDay ? (
-                        <div className="small-text">{order.deliveryDay}</div>
-                      ) : null}
-                      {order.deliveryMethod ? (
-                        <div className="small-text">{order.deliveryMethod}</div>
-                      ) : null}
-                    </td>
-
-                    <td>
-                      {order.assignedDriverName || "-"}
-                      {order.assignedVehicleNumber ? (
-                        <div className="small-text">{order.assignedVehicleNumber}</div>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          <div className="button-row">
-            <button className="button" type="submit" disabled={isSubmitting || drivers.length === 0}>
-              Assign Selected Orders
-            </button>
+                        <td>{driver.notes || <span className="muted-text">-</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        </Form>
+        </div>
+
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <h2 className="card-title">Assign Orders</h2>
+              <p className="card-subtitle">
+                Showing {visibleOrders.length} orders. Selected {selectedOrderIds.length} orders.
+              </p>
+            </div>
+
+            <div className="toolbar">
+              <select
+                className="toolbar-select"
+                value={ordersLimit}
+                onChange={(event) => {
+                  setOrdersLimit(event.target.value);
+                  setSelectedOrderIds([]);
+                }}
+              >
+                <option value="5">Show 5 orders</option>
+                <option value="10">Show 10 orders</option>
+                <option value="20">Show 20 orders</option>
+                <option value="50">Show 50 orders</option>
+              </select>
+
+              <button className="button-secondary" type="button" onClick={toggleAll}>
+                {selectedOrderIds.length === visibleOrders.length ? "Unselect All" : "Select All"}
+              </button>
+            </div>
+          </div>
+
+          <div className="card-body">
+            <Form method="post">
+              <input type="hidden" name="intent" value="assignOrders" />
+
+              <div className="assign-row">
+                <div className="field">
+                  <label htmlFor="driverId">Select Driver</label>
+                  <select id="driverId" name="driverId" required>
+                    <option value="">Choose driver</option>
+                    {drivers.map((driver) => (
+                      <option key={driver.id} value={driver.id}>
+                        {driver.name}
+                        {driver.vehicleNumber ? ` - ${driver.vehicleNumber}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <button className="button" type="submit" disabled={isSubmitting || drivers.length === 0}>
+                  {isSubmitting ? "Assigning..." : "Assign Selected Orders"}
+                </button>
+              </div>
+
+              {selectedOrderIds.map((orderId) => (
+                <input key={orderId} type="hidden" name="orderIds" value={orderId} />
+              ))}
+
+              {visibleOrders.length === 0 ? (
+                <div className="empty-state">No orders found.</div>
+              ) : (
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th className="checkbox-cell">Select</th>
+                        <th>Order</th>
+                        <th>Customer</th>
+                        <th>Address</th>
+                        <th>Delivery</th>
+                        <th>Current Driver</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {visibleOrders.map((order) => (
+                        <tr
+                          key={order.id}
+                          className={selectedOrderIds.includes(order.id) ? "selected-row" : ""}
+                        >
+                          <td className="checkbox-cell">
+                            <input
+                              className="order-checkbox"
+                              type="checkbox"
+                              checked={selectedOrderIds.includes(order.id)}
+                              onChange={() => toggleOrder(order.id)}
+                            />
+                          </td>
+
+                          <td>
+                            <div className="primary-text">{order.name}</div>
+                          </td>
+
+                          <td>{order.customerName || <span className="muted-text">No customer</span>}</td>
+
+                          <td className="address-cell">{order.address || <span className="muted-text">-</span>}</td>
+
+                          <td>
+                            <div className="primary-text">{order.deliveryDate || "-"}</div>
+                            {order.deliveryDay ? <div className="muted-text">{order.deliveryDay}</div> : null}
+                            {order.deliveryMethod ? <div className="muted-text">{order.deliveryMethod}</div> : null}
+                          </td>
+
+                          <td>
+                            {order.assignedDriverName ? (
+                              <>
+                                <span className="badge">{order.assignedDriverName}</span>
+                                {order.assignedVehicleNumber ? (
+                                  <div className="muted-text">{order.assignedVehicleNumber}</div>
+                                ) : null}
+                              </>
+                            ) : (
+                              <span className="muted-text">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Form>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -657,7 +959,7 @@ function parseDriverDetails(value: string | null | undefined) {
       vehicleNumber: parsed?.vehicleNumber || "",
       vehicleType: parsed?.vehicleType || "",
     };
-  } catch (error) {
+  } catch {
     return {
       name: "",
       phone: "",

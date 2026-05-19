@@ -390,6 +390,10 @@ export default function Index() {
     return visibleOrders.filter((order) => selectedIds.includes(order.id));
   }, [visibleOrders, selectedIds]);
 
+  const ordersWithDriver = useMemo(() => {
+    return orders.filter((order) => order.driverName).length;
+  }, [orders]);
+
   const toggleOrder = (orderId: string) => {
     setSelectedIds((current) =>
       current.includes(orderId)
@@ -423,89 +427,324 @@ export default function Index() {
         ${getPageCss(printMode)}
 
         .app-root {
-          padding: 24px;
+          min-height: 100vh;
+          background: #f6f6f7;
+          color: #202223;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
         }
 
         .screen-area {
           display: block;
+          padding: 24px;
         }
 
-        .app-card {
-          background: #fff;
-          border: 1px solid #ddd;
-          border-radius: 8px;
-          padding: 20px;
-          margin-top: 20px;
+        .page-container {
+          max-width: 1360px;
+          margin: 0 auto;
         }
 
-        .top-row {
+        .page-header {
           display: flex;
           justify-content: space-between;
-          align-items: center;
+          align-items: flex-start;
           gap: 16px;
+          margin-bottom: 18px;
+        }
+
+        .eyebrow {
+          font-size: 12px;
+          font-weight: 700;
+          color: #6d7175;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          margin-bottom: 6px;
+        }
+
+        .page-title {
+          margin: 0;
+          font-size: 24px;
+          line-height: 32px;
+          font-weight: 750;
+        }
+
+        .page-description {
+          margin: 6px 0 0;
+          color: #6d7175;
+          font-size: 14px;
+          line-height: 20px;
+        }
+
+        .header-actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .summary-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 14px;
+          margin-bottom: 16px;
+        }
+
+        .summary-card {
+          background: #fff;
+          border: 1px solid #e1e3e5;
+          border-radius: 12px;
+          padding: 16px;
+          box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+        }
+
+        .summary-label {
+          font-size: 13px;
+          color: #6d7175;
+          margin-bottom: 6px;
+        }
+
+        .summary-value {
+          font-size: 26px;
+          line-height: 32px;
+          font-weight: 750;
+        }
+
+        .card {
+          background: #fff;
+          border: 1px solid #e1e3e5;
+          border-radius: 12px;
+          overflow: hidden;
+          box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+        }
+
+        .card-header {
+          padding: 16px 18px;
+          border-bottom: 1px solid #e1e3e5;
+          background: #fff;
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .card-title {
+          margin: 0;
+          font-size: 16px;
+          line-height: 24px;
+          font-weight: 750;
+        }
+
+        .card-subtitle {
+          margin: 4px 0 0;
+          color: #6d7175;
+          font-size: 13px;
+          line-height: 18px;
+        }
+
+        .toolbar {
+          display: flex;
+          align-items: center;
+          gap: 10px;
           flex-wrap: wrap;
         }
 
         .button {
-          background: #111827;
-          color: white;
-          border: 0;
-          border-radius: 6px;
-          padding: 10px 16px;
+          min-height: 36px;
+          padding: 8px 14px;
+          border-radius: 8px;
+          border: 1px solid #202223;
+          background: #202223;
+          color: #fff;
+          font-size: 14px;
+          font-weight: 650;
           cursor: pointer;
-          font-weight: 600;
+          box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+        }
+
+        .button:hover {
+          background: #111827;
         }
 
         .button-secondary {
-          background: #f3f4f6;
-          color: #111827;
-          border: 1px solid #d1d5db;
-          border-radius: 6px;
-          padding: 10px 16px;
+          min-height: 36px;
+          padding: 8px 14px;
+          border-radius: 8px;
+          border: 1px solid #c9cccf;
+          background: #fff;
+          color: #202223;
+          font-size: 14px;
+          font-weight: 650;
           cursor: pointer;
-          font-weight: 600;
+        }
+
+        .button-secondary:hover {
+          background: #f6f6f7;
         }
 
         .select-box {
-          border: 1px solid #d1d5db;
-          border-radius: 6px;
-          padding: 10px;
-          min-width: 180px;
+          min-height: 36px;
+          border: 1px solid #babfc3;
+          border-radius: 8px;
+          background: #fff;
+          color: #202223;
+          font-size: 14px;
+          line-height: 20px;
+          padding: 8px 10px;
+          box-sizing: border-box;
+          outline: none;
         }
 
         .template-select {
           min-width: 250px;
         }
 
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-top: 16px;
+        .select-box:focus {
+          border-color: #2c6ecb;
+          box-shadow: 0 0 0 1px #2c6ecb;
         }
 
-        th,
-        td {
-          border-bottom: 1px solid #e5e7eb;
-          padding: 12px;
+        .table-wrap {
+          overflow-x: auto;
+          width: 100%;
+        }
+
+        .data-table {
+          width: 100%;
+          border-collapse: separate;
+          border-spacing: 0;
+        }
+
+        .data-table th {
+          background: #f6f6f7;
+          border-bottom: 1px solid #e1e3e5;
+          color: #6d7175;
+          font-size: 12px;
+          line-height: 16px;
+          font-weight: 750;
           text-align: left;
-          font-size: 14px;
+          padding: 10px 12px;
+          white-space: nowrap;
+        }
+
+        .data-table td {
+          border-bottom: 1px solid #e1e3e5;
+          color: #202223;
+          font-size: 13px;
+          line-height: 18px;
+          padding: 12px;
           vertical-align: top;
         }
 
-        th {
-          background: #f9fafb;
-          font-weight: 700;
+        .data-table tbody tr:hover {
+          background: #fafafa;
         }
 
-        .small-text {
+        .data-table tbody tr:last-child td {
+          border-bottom: 0;
+        }
+
+        .selected-row {
+          background: #f2f7ff !important;
+        }
+
+        .checkbox-cell {
+          width: 44px;
+        }
+
+        .order-checkbox {
+          width: 16px;
+          height: 16px;
+          cursor: pointer;
+        }
+
+        .primary-text {
+          font-weight: 650;
+        }
+
+        .muted-text {
+          color: #6d7175;
           font-size: 12px;
-          color: #4b5563;
-          line-height: 1.4;
-          margin-top: 3px;
+          line-height: 17px;
+          margin-top: 2px;
+        }
+
+        .badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 3px 8px;
+          border-radius: 999px;
+          background: #eaf4ff;
+          color: #1f5199;
+          border: 1px solid #b4d7ff;
+          font-size: 12px;
+          line-height: 16px;
+          font-weight: 650;
+          max-width: 100%;
+          margin: 2px 4px 2px 0;
+        }
+
+        .badge-green {
+          background: #f1f8f5;
+          color: #008060;
+          border-color: #aee9d1;
+        }
+
+        .badge-muted {
+          background: #f6f6f7;
+          color: #6d7175;
+          border-color: #e1e3e5;
+        }
+
+        .address-cell {
+          max-width: 360px;
+        }
+
+        .details-cell {
+          max-width: 340px;
+        }
+
+        .empty-state {
+          padding: 34px 18px;
+          text-align: center;
+          color: #6d7175;
+          font-size: 14px;
+          line-height: 20px;
         }
 
         .print-area {
           display: none;
+        }
+
+        @media (max-width: 1000px) {
+          .summary-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .page-header {
+            flex-direction: column;
+          }
+        }
+
+        @media (max-width: 680px) {
+          .screen-area {
+            padding: 16px;
+          }
+
+          .summary-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .header-actions,
+          .toolbar {
+            width: 100%;
+          }
+
+          .select-box,
+          .template-select,
+          .button,
+          .button-secondary {
+            width: 100%;
+          }
         }
 
         @media print {
@@ -524,6 +763,7 @@ export default function Index() {
             margin: 0 !important;
             min-height: auto !important;
             height: auto !important;
+            background: #fff !important;
           }
 
           .screen-area {
@@ -821,177 +1061,209 @@ export default function Index() {
       `}</style>
 
       <div className="screen-area">
-        <div className="top-row">
-          <div>
-            <h1>Box Label Printer</h1>
-            <p>Select Shopify orders and print labels, packing slips, or checklist.</p>
-          </div>
-
-          <div className="top-row">
-            <select
-              className="select-box template-select"
-              value={printMode}
-              onChange={(event) => setPrintMode(event.target.value as PrintMode)}
-            >
-              <option value="labels">Box Labels</option>
-              <option value="localPackingSlip">Packing Slip - Local Orders</option>
-              <option value="courierPackingSlip">Packing Slip - Courier Orders</option>
-              <option value="checklist">Checklist</option>
-            </select>
-
-            <button className="button" onClick={handlePrint}>
-              {printButtonLabel}
-            </button>
-          </div>
-        </div>
-
-        <div className="app-card">
-          <div className="top-row">
+        <div className="page-container">
+          <div className="page-header">
             <div>
-              <h2>Orders</h2>
-              <p>
-                Showing {visibleOrders.length} orders. Selected {selectedOrders.length} orders.
+              <div className="eyebrow">Print centre</div>
+              <h1 className="page-title">Box Label Printer</h1>
+              <p className="page-description">
+                Select Shopify orders and print box labels, local packing slips, courier packing slips, or checklist.
               </p>
             </div>
 
-            <div className="top-row">
+            <div className="header-actions">
               <select
-                className="select-box"
-                value={ordersLimit}
-                onChange={(e) => {
-                  setOrdersLimit(e.target.value);
-                  setSelectedIds([]);
-                }}
+                className="select-box template-select"
+                value={printMode}
+                onChange={(event) => setPrintMode(event.target.value as PrintMode)}
               >
-                <option value="5">Show 5 orders</option>
-                <option value="10">Show 10 orders</option>
-                <option value="20">Show 20 orders</option>
-                <option value="50">Show 50 orders</option>
+                <option value="labels">Box Labels</option>
+                <option value="localPackingSlip">Packing Slip - Local Orders</option>
+                <option value="courierPackingSlip">Packing Slip - Courier Orders</option>
+                <option value="checklist">Checklist</option>
               </select>
 
-              <button className="button-secondary" onClick={toggleAll}>
-                {selectedIds.length === visibleOrders.length ? "Unselect All" : "Select All"}
+              <button className="button" onClick={handlePrint}>
+                {printButtonLabel}
               </button>
             </div>
           </div>
 
-          {visibleOrders.length === 0 ? (
-            <p>No orders found.</p>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Select</th>
-                  <th>Order</th>
-                  <th>Customer</th>
-                  <th>Address</th>
-                  <th>Delivery Date</th>
-                  <th>Delivery Method</th>
-                  <th>Additional Details</th>
-                  <th>Driver</th>
-                </tr>
-              </thead>
+          <div className="summary-grid">
+            <div className="summary-card">
+              <div className="summary-label">Orders loaded</div>
+              <div className="summary-value">{orders.length}</div>
+            </div>
 
-              <tbody>
-                {visibleOrders.map((order) => (
-                  <tr key={order.id}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.includes(order.id)}
-                        onChange={() => toggleOrder(order.id)}
-                      />
-                    </td>
+            <div className="summary-card">
+              <div className="summary-label">Visible orders</div>
+              <div className="summary-value">{visibleOrders.length}</div>
+            </div>
 
-                    <td>{order.name}</td>
+            <div className="summary-card">
+              <div className="summary-label">Selected orders</div>
+              <div className="summary-value">{selectedOrders.length}</div>
+            </div>
 
-                    <td>{order.customerName || "No customer"}</td>
+            <div className="summary-card">
+              <div className="summary-label">Orders with driver</div>
+              <div className="summary-value">{ordersWithDriver}</div>
+            </div>
+          </div>
 
-                    <td>{formatShippingAddress(order) || "-"}</td>
+          <div className="card">
+            <div className="card-header">
+              <div>
+                <h2 className="card-title">Orders</h2>
+                <p className="card-subtitle">
+                  Showing {visibleOrders.length} orders. Selected {selectedOrders.length} orders.
+                </p>
+              </div>
 
-                    <td>
-                      {order.deliveryDate || "-"}
-                      {order.deliveryDay ? <div className="small-text">{order.deliveryDay}</div> : null}
-                    </td>
+              <div className="toolbar">
+                <select
+                  className="select-box"
+                  value={ordersLimit}
+                  onChange={(event) => {
+                    setOrdersLimit(event.target.value);
+                    setSelectedIds([]);
+                  }}
+                >
+                  <option value="5">Show 5 orders</option>
+                  <option value="10">Show 10 orders</option>
+                  <option value="20">Show 20 orders</option>
+                  <option value="50">Show 50 orders</option>
+                </select>
 
-                    <td>{order.deliveryMethod || "-"}</td>
+                <button className="button-secondary" onClick={toggleAll}>
+                  {selectedIds.length === visibleOrders.length ? "Unselect All" : "Select All"}
+                </button>
+              </div>
+            </div>
 
-                    <td>
-                      {order.customerTimeZone ? (
-                        <div className="small-text">Timezone: {order.customerTimeZone}</div>
-                      ) : null}
+            {visibleOrders.length === 0 ? (
+              <div className="empty-state">No orders found.</div>
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th className="checkbox-cell">Select</th>
+                      <th>Order</th>
+                      <th>Customer</th>
+                      <th>Address</th>
+                      <th>Delivery</th>
+                      <th>Method</th>
+                      <th>Additional Details</th>
+                      <th>Driver</th>
+                    </tr>
+                  </thead>
 
-                      {order.deliveryPostalCode ? (
-                        <div className="small-text">
-                          Delivery Postal Code: {order.deliveryPostalCode}
-                        </div>
-                      ) : null}
+                  <tbody>
+                    {visibleOrders.map((order) => (
+                      <tr key={order.id} className={selectedIds.includes(order.id) ? "selected-row" : ""}>
+                        <td className="checkbox-cell">
+                          <input
+                            className="order-checkbox"
+                            type="checkbox"
+                            checked={selectedIds.includes(order.id)}
+                            onChange={() => toggleOrder(order.id)}
+                          />
+                        </td>
 
-                      {order.locationId ? (
-                        <div className="small-text">locationId: {order.locationId}</div>
-                      ) : null}
+                        <td>
+                          <div className="primary-text">{order.name}</div>
+                        </td>
 
-                      {order.shopifyLocationId ? (
-                        <div className="small-text">
-                          shopifyLocationId: {order.shopifyLocationId}
-                        </div>
-                      ) : null}
+                        <td>{order.customerName || <span className="muted-text">No customer</span>}</td>
 
-                      {order.checkoutMethod ? (
-                        <div className="small-text">
-                          Checkout Method: {order.checkoutMethod}
-                        </div>
-                      ) : null}
+                        <td className="address-cell">
+                          {formatShippingAddress(order) || <span className="muted-text">-</span>}
+                        </td>
 
-                      {order.pickupLocationCompany || order.deliveryLocation || order.pickupDetails ? (
-                        <div className="small-text">
-                          Pickup / Location:{" "}
-                          {order.pickupLocationCompany || order.deliveryLocation || order.pickupDetails}
-                        </div>
-                      ) : null}
+                        <td>
+                          <div className="primary-text">{order.deliveryDate || "-"}</div>
+                          {order.deliveryDay ? <div className="muted-text">{order.deliveryDay}</div> : null}
+                        </td>
 
-                      {formatPickupAddress(order) ? (
-                        <div className="small-text">
-                          Pickup Address: {formatPickupAddress(order)}
-                        </div>
-                      ) : null}
+                        <td>
+                          {order.deliveryMethod ? (
+                            <span className="badge badge-green">{order.deliveryMethod}</span>
+                          ) : (
+                            <span className="badge badge-muted">No method</span>
+                          )}
+                        </td>
 
-                      {order.packingInstructions ? (
-                        <div className="small-text">
-                          Packing Instructions: {order.packingInstructions}
-                        </div>
-                      ) : null}
+                        <td className="details-cell">
+                          {order.customerTimeZone ? (
+                            <div className="muted-text">Timezone: {order.customerTimeZone}</div>
+                          ) : null}
 
-                      {!order.customerTimeZone &&
-                      !order.deliveryPostalCode &&
-                      !order.locationId &&
-                      !order.shopifyLocationId &&
-                      !order.checkoutMethod &&
-                      !order.pickupLocationCompany &&
-                      !order.deliveryLocation &&
-                      !order.pickupDetails &&
-                      !order.packingInstructions &&
-                      !formatPickupAddress(order)
-                        ? "-"
-                        : null}
-                    </td>
+                          {order.deliveryPostalCode ? (
+                            <div className="muted-text">Delivery Postal Code: {order.deliveryPostalCode}</div>
+                          ) : null}
 
-                    <td>
-                      {order.driverName || "-"}
-                      {order.driverPhone ? (
-                        <div className="small-text">Phone: {order.driverPhone}</div>
-                      ) : null}
-                      {order.vehicleNumber || order.vehicleType ? (
-                        <div className="small-text">
-                          Vehicle: {[order.vehicleNumber, order.vehicleType].filter(Boolean).join(" - ")}
-                        </div>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                          {order.locationId ? <div className="muted-text">locationId: {order.locationId}</div> : null}
+
+                          {order.shopifyLocationId ? (
+                            <div className="muted-text">shopifyLocationId: {order.shopifyLocationId}</div>
+                          ) : null}
+
+                          {order.checkoutMethod ? (
+                            <div className="muted-text">Checkout Method: {order.checkoutMethod}</div>
+                          ) : null}
+
+                          {order.pickupLocationCompany || order.deliveryLocation || order.pickupDetails ? (
+                            <div className="muted-text">
+                              Pickup / Location:{" "}
+                              {order.pickupLocationCompany || order.deliveryLocation || order.pickupDetails}
+                            </div>
+                          ) : null}
+
+                          {formatPickupAddress(order) ? (
+                            <div className="muted-text">Pickup Address: {formatPickupAddress(order)}</div>
+                          ) : null}
+
+                          {order.packingInstructions ? (
+                            <div className="muted-text">Packing Instructions: {order.packingInstructions}</div>
+                          ) : null}
+
+                          {!order.customerTimeZone &&
+                          !order.deliveryPostalCode &&
+                          !order.locationId &&
+                          !order.shopifyLocationId &&
+                          !order.checkoutMethod &&
+                          !order.pickupLocationCompany &&
+                          !order.deliveryLocation &&
+                          !order.pickupDetails &&
+                          !order.packingInstructions &&
+                          !formatPickupAddress(order) ? (
+                            <span className="muted-text">-</span>
+                          ) : null}
+                        </td>
+
+                        <td>
+                          {order.driverName ? (
+                            <>
+                              <span className="badge">{order.driverName}</span>
+                              {order.driverPhone ? <div className="muted-text">Phone: {order.driverPhone}</div> : null}
+                              {order.vehicleNumber || order.vehicleType ? (
+                                <div className="muted-text">
+                                  Vehicle: {[order.vehicleNumber, order.vehicleType].filter(Boolean).join(" - ")}
+                                </div>
+                              ) : null}
+                            </>
+                          ) : (
+                            <span className="badge badge-muted">Not assigned</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1139,9 +1411,7 @@ function PackingSlipsPrint({
                         </div>
 
                         {formatDriverDetails(order) ? (
-                          <div className="packing-driver-line">
-                            {formatDriverDetails(order)}
-                          </div>
+                          <div className="packing-driver-line">{formatDriverDetails(order)}</div>
                         ) : null}
                       </div>
 
@@ -1157,11 +1427,7 @@ function PackingSlipsPrint({
                     </td>
 
                     <td className="packing-right">
-                      <img
-                        className="packing-logo"
-                        src={LOGO_URL}
-                        alt="Joy Wholefoods Logo"
-                      />
+                      <img className="packing-logo" src={LOGO_URL} alt="Joy Wholefoods Logo" />
                     </td>
                   </tr>
                 </tbody>
@@ -1253,9 +1519,7 @@ function ChecklistPrint({ orders, title }: { orders: Order[]; title: string }) {
             return (
               <tr key={order.id}>
                 <td>
-                  <div className="checklist-customer-name">
-                    {order.customerName || "Customer Name"}
-                  </div>
+                  <div className="checklist-customer-name">{order.customerName || "Customer Name"}</div>
                   <div className="checklist-order-name">{order.name}</div>
                 </td>
                 <td>{formatDriverPickupDetails(order)}</td>
