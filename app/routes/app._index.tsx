@@ -14,6 +14,13 @@ type CustomAttribute = {
   value: string;
 };
 
+type DriverDetails = {
+  name: string;
+  phone: string;
+  vehicleNumber: string;
+  vehicleType: string;
+};
+
 type LineItem = {
   id: string;
   title: string;
@@ -60,6 +67,9 @@ type Order = {
 
   pickupDetails: string;
   driverName: string;
+  driverPhone: string;
+  vehicleNumber: string;
+  vehicleType: string;
   packingInstructions: string;
   lineItems: LineItem[];
 };
@@ -104,6 +114,10 @@ export const loader = async ({ request }: { request: Request }) => {
               value
             }
 
+            driverDetailsMetafield: metafield(namespace: "custom", key: "driver_details") {
+              value
+            }
+
             lineItems(first: 100) {
               edges {
                 node {
@@ -137,6 +151,8 @@ export const loader = async ({ request }: { request: Request }) => {
     data?.data?.orders?.edges?.map((edge: any) => {
       const order = edge.node;
       const shipping = order.shippingAddress;
+
+      const assignedDriver = parseDriverDetails(order.driverDetailsMetafield?.value);
 
       const deliveryMethod = getOrderValue(order, "Delivery Method", [
         "Delivery Method",
@@ -271,7 +287,7 @@ export const loader = async ({ request }: { request: Request }) => {
         "pickup-details",
       ]);
 
-      const driverName = getOrderValue(order, "EasyRoutes Driver", [
+      const easyRoutesDriverName = getOrderValue(order, "EasyRoutes Driver", [
         "EasyRoutes Driver",
         "easyroutes driver",
         "Driver",
@@ -317,13 +333,9 @@ export const loader = async ({ request }: { request: Request }) => {
 
         customerName:
           shipping?.name ||
-          `${order.customer?.firstName || ""} ${
-            order.customer?.lastName || ""
-          }`.trim(),
+          `${order.customer?.firstName || ""} ${order.customer?.lastName || ""}`.trim(),
 
-        address: [shipping?.address1, shipping?.address2]
-          .filter(Boolean)
-          .join(", "),
+        address: [shipping?.address1, shipping?.address2].filter(Boolean).join(", "),
 
         city: shipping?.city || "",
         province: shipping?.province || "",
@@ -351,7 +363,10 @@ export const loader = async ({ request }: { request: Request }) => {
         pickupLocationCountry,
 
         pickupDetails,
-        driverName,
+        driverName: assignedDriver.name || easyRoutesDriverName,
+        driverPhone: assignedDriver.phone,
+        vehicleNumber: assignedDriver.vehicleNumber,
+        vehicleType: assignedDriver.vehicleType,
         packingInstructions,
         lineItems,
       };
@@ -752,7 +767,7 @@ export default function Index() {
             margin-top: 0;
           }
 
-           .checklist-table th,
+          .checklist-table th,
           .checklist-table td {
             border: 1px solid #000;
             padding: 6px;
@@ -835,8 +850,7 @@ export default function Index() {
             <div>
               <h2>Orders</h2>
               <p>
-                Showing {visibleOrders.length} orders. Selected {" "}
-                {selectedOrders.length} orders.
+                Showing {visibleOrders.length} orders. Selected {selectedOrders.length} orders.
               </p>
             </div>
 
@@ -856,9 +870,7 @@ export default function Index() {
               </select>
 
               <button className="button-secondary" onClick={toggleAll}>
-                {selectedIds.length === visibleOrders.length
-                  ? "Unselect All"
-                  : "Select All"}
+                {selectedIds.length === visibleOrders.length ? "Unselect All" : "Select All"}
               </button>
             </div>
           </div>
@@ -899,18 +911,14 @@ export default function Index() {
 
                     <td>
                       {order.deliveryDate || "-"}
-                      {order.deliveryDay ? (
-                        <div className="small-text">{order.deliveryDay}</div>
-                      ) : null}
+                      {order.deliveryDay ? <div className="small-text">{order.deliveryDay}</div> : null}
                     </td>
 
                     <td>{order.deliveryMethod || "-"}</td>
 
                     <td>
                       {order.customerTimeZone ? (
-                        <div className="small-text">
-                          Timezone: {order.customerTimeZone}
-                        </div>
+                        <div className="small-text">Timezone: {order.customerTimeZone}</div>
                       ) : null}
 
                       {order.deliveryPostalCode ? (
@@ -920,9 +928,7 @@ export default function Index() {
                       ) : null}
 
                       {order.locationId ? (
-                        <div className="small-text">
-                          locationId: {order.locationId}
-                        </div>
+                        <div className="small-text">locationId: {order.locationId}</div>
                       ) : null}
 
                       {order.shopifyLocationId ? (
@@ -937,14 +943,10 @@ export default function Index() {
                         </div>
                       ) : null}
 
-                      {order.pickupLocationCompany ||
-                      order.deliveryLocation ||
-                      order.pickupDetails ? (
+                      {order.pickupLocationCompany || order.deliveryLocation || order.pickupDetails ? (
                         <div className="small-text">
-                          Pickup / Location: {" "}
-                          {order.pickupLocationCompany ||
-                            order.deliveryLocation ||
-                            order.pickupDetails}
+                          Pickup / Location:{" "}
+                          {order.pickupLocationCompany || order.deliveryLocation || order.pickupDetails}
                         </div>
                       ) : null}
 
@@ -974,7 +976,17 @@ export default function Index() {
                         : null}
                     </td>
 
-                    <td>{order.driverName || "-"}</td>
+                    <td>
+                      {order.driverName || "-"}
+                      {order.driverPhone ? (
+                        <div className="small-text">Phone: {order.driverPhone}</div>
+                      ) : null}
+                      {order.vehicleNumber || order.vehicleType ? (
+                        <div className="small-text">
+                          Vehicle: {[order.vehicleNumber, order.vehicleType].filter(Boolean).join(" - ")}
+                        </div>
+                      ) : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1011,9 +1023,7 @@ function LabelsPrint({ orders }: { orders: Order[] }) {
             <div className="label-box" key={order.id}>
               <img className="label-logo" src={LOGO_URL} alt="Joy Wholefoods" />
 
-              <div className="label-name">
-                {order.customerName || "Customer Name"}
-              </div>
+              <div className="label-name">{order.customerName || "Customer Name"}</div>
 
               <div className="label-address">{formatShippingAddress(order)}</div>
 
@@ -1079,9 +1089,9 @@ function LabelsPrint({ orders }: { orders: Order[] }) {
                   </>
                 ) : null}
 
-                {order.driverName ? (
+                {formatDriverDetails(order) ? (
                   <>
-                    Driver: {order.driverName}
+                    {formatDriverDetails(order)}
                     <br />
                   </>
                 ) : null}
@@ -1118,7 +1128,7 @@ function PackingSlipsPrint({
                       <div className="packing-type">Packing Slip - {type}</div>
 
                       <div className="packing-name">
-                        {order.customerName || "Customer Name"} {" "}
+                        {order.customerName || "Customer Name"}{" "}
                         <span className="packing-order">{order.name}</span>
                       </div>
 
@@ -1128,9 +1138,9 @@ function PackingSlipsPrint({
                           {order.pickupDetails ? ` ${order.pickupDetails}` : ""}
                         </div>
 
-                        {order.driverName ? (
+                        {formatDriverDetails(order) ? (
                           <div className="packing-driver-line">
-                            Driver: {order.driverName}
+                            {formatDriverDetails(order)}
                           </div>
                         ) : null}
                       </div>
@@ -1177,8 +1187,7 @@ function PackingSlipsPrint({
                     <td className="packing-label">
                       Frozen
                       <div className="packing-note">
-                        Meat may defrost a little in transit — if it’s cold, it’s safe
-                        to refreeze
+                        Meat may defrost a little in transit — if it’s cold, it’s safe to refreeze
                       </div>
                     </td>
                     <td className="packing-value">
@@ -1197,8 +1206,8 @@ function PackingSlipsPrint({
 
               <div className="packing-footer">
                 Your box might look <u>overpacked</u> – that’s just to make sure it
-                arrives happy. All packing is reused and recyclable. {" "}
-                <b>Need help?</b> Text us on {SUPPORT_PHONE}.
+                arrives happy. All packing is reused and recyclable. <b>Need help?</b>{" "}
+                Text us on {SUPPORT_PHONE}.
               </div>
 
               <div className="packing-bottom">
@@ -1385,13 +1394,7 @@ function getLineItemCategory(item: LineItem): "fruit" | "grocery" | "frozen" | "
 }
 
 function formatShippingAddress(order: Order) {
-  return [
-    order.address,
-    order.city,
-    order.province,
-    order.zip,
-    order.country,
-  ]
+  return [order.address, order.city, order.province, order.zip, order.country]
     .filter(Boolean)
     .join(", ");
 }
@@ -1408,15 +1411,56 @@ function formatPickupAddress(order: Order) {
     .join(", ");
 }
 
-function formatDriverPickupDetails(order: Order) {
+function formatDriverDetails(order: Order) {
+  const vehicle = [order.vehicleNumber, order.vehicleType].filter(Boolean).join(" - ");
+
   return [
     order.driverName ? `Driver: ${order.driverName}` : "",
+    order.driverPhone ? `Phone: ${order.driverPhone}` : "",
+    vehicle ? `Vehicle: ${vehicle}` : "",
+  ]
+    .filter(Boolean)
+    .join(" | ");
+}
+
+function formatDriverPickupDetails(order: Order) {
+  return [
+    formatDriverDetails(order),
     order.pickupDetails,
     order.pickupLocationCompany,
     formatPickupAddress(order),
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function parseDriverDetails(value: string | null | undefined): DriverDetails {
+  if (!value) {
+    return {
+      name: "",
+      phone: "",
+      vehicleNumber: "",
+      vehicleType: "",
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+
+    return {
+      name: parsed?.name || "",
+      phone: parsed?.phone || "",
+      vehicleNumber: parsed?.vehicleNumber || "",
+      vehicleType: parsed?.vehicleType || "",
+    };
+  } catch {
+    return {
+      name: "",
+      phone: "",
+      vehicleNumber: "",
+      vehicleType: "",
+    };
+  }
 }
 
 function getOrderValue(
@@ -1434,10 +1478,7 @@ function getOrderValue(
   );
 }
 
-function getCustomValue(
-  customAttributes: CustomAttribute[] = [],
-  keys: string[],
-) {
+function getCustomValue(customAttributes: CustomAttribute[] = [], keys: string[]) {
   const normalizedKeys = keys.map((key) => normalizeKey(key));
 
   const found = customAttributes.find((attr) =>
