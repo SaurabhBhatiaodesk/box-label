@@ -6,19 +6,13 @@ const LOGO_URL =
   "https://cdn.shopify.com/s/files/1/0483/3758/4295/files/Joy_Wholefoods_-_Primary_Logo_-_Dark.png?v=1775531358";
 
 const SUPPORT_PHONE = "0480 079 218";
+const ORDERS_FETCH_LIMIT = 1000;
 
 type PrintMode = "labels" | "localPackingSlip" | "courierPackingSlip" | "checklist";
 
 type CustomAttribute = {
   key: string;
   value: string;
-};
-
-type DriverDetails = {
-  name: string;
-  phone: string;
-  vehicleNumber: string;
-  vehicleType: string;
 };
 
 type LineItem = {
@@ -66,10 +60,11 @@ type Order = {
   pickupLocationCountry: string;
 
   pickupDetails: string;
+  easyRoutesRoute: string;
+  easyRoutesStopNumber: string;
+  easyRoutesRouteStart: string;
+  easyRoutesStopEta: string;
   driverName: string;
-  driverPhone: string;
-  vehicleNumber: string;
-  vehicleType: string;
   packingInstructions: string;
   lineItems: LineItem[];
 };
@@ -77,82 +72,109 @@ type Order = {
 export const loader = async ({ request }: { request: Request }) => {
   const { admin } = await authenticate.admin(request);
 
-  const response = await admin.graphql(`
-    query GetOrders {
-      orders(first: 50, sortKey: CREATED_AT, reverse: true) {
-        edges {
-          node {
-            id
-            name
-            createdAt
-            note
+  const allEdges: any[] = [];
+  let hasNextPage = true;
+  let cursor: string | null = null;
 
-            customer {
-              firstName
-              lastName
-              email
-              phone
-            }
+  while (hasNextPage && allEdges.length < ORDERS_FETCH_LIMIT) {
+    const first = Math.min(250, ORDERS_FETCH_LIMIT - allEdges.length);
 
-            shippingAddress {
-              name
-              address1
-              address2
-              city
-              province
-              country
-              zip
-              phone
-            }
+    const response = await admin.graphql(
+      `#graphql
+        query GetOrders($first: Int!, $after: String) {
+          orders(first: $first, after: $after, sortKey: CREATED_AT, reverse: true) {
+            edges {
+              cursor
+              node {
+                id
+                name
+                createdAt
+                note
 
-            customAttributes {
-              key
-              value
-            }
+                customer {
+                  firstName
+                  lastName
+                  email
+                  phone
+                }
 
-            packingInstructionsMetafield: metafield(namespace: "custom", key: "packing_instructions") {
-              value
-            }
+                shippingAddress {
+                  name
+                  address1
+                  address2
+                  city
+                  province
+                  country
+                  zip
+                  phone
+                }
 
-            driverDetailsMetafield: metafield(namespace: "custom", key: "driver_details") {
-              value
-            }
+                customAttributes {
+                  key
+                  value
+                }
 
-            lineItems(first: 100) {
-              edges {
-                node {
-                  id
-                  title
-                  quantity
-                  currentQuantity
-                  unfulfilledQuantity
-                  variantTitle
-                  product {
-                    title
-                    productType
-                    tags
+                packingInstructionsMetafield: metafield(namespace: "custom", key: "packing_instructions") {
+                  value
+                }
+
+                lineItems(first: 100) {
+                  edges {
+                    node {
+                      id
+                      title
+                      quantity
+                      currentQuantity
+                      unfulfilledQuantity
+                      variantTitle
+                      product {
+                        title
+                        productType
+                        tags
+                      }
+                    }
                   }
                 }
               }
             }
+
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
           }
         }
-      }
+      `,
+      {
+        variables: {
+          first,
+          after: cursor,
+        },
+      },
+    );
+
+    const data = await response.json();
+
+    if (data?.errors) {
+      console.error("Shopify GraphQL errors:", JSON.stringify(data.errors, null, 2));
+      break;
     }
-  `);
 
-  const data = await response.json();
+    const edges = data?.data?.orders?.edges || [];
+    allEdges.push(...edges);
 
-  if (data?.errors) {
-    console.error("Shopify GraphQL errors:", JSON.stringify(data.errors, null, 2));
+    hasNextPage = Boolean(data?.data?.orders?.pageInfo?.hasNextPage);
+    cursor = data?.data?.orders?.pageInfo?.endCursor || null;
+
+    if (!cursor) {
+      break;
+    }
   }
 
   const orders: Order[] =
-    data?.data?.orders?.edges?.map((edge: any) => {
+    allEdges.map((edge: any) => {
       const order = edge.node;
       const shipping = order.shippingAddress;
-
-      const assignedDriver = parseDriverDetails(order.driverDetailsMetafield?.value);
 
       const deliveryMethod = getOrderValue(order, "Delivery Method", [
         "Delivery Method",
@@ -287,6 +309,36 @@ export const loader = async ({ request }: { request: Request }) => {
         "pickup-details",
       ]);
 
+      const easyRoutesRoute = getOrderValue(order, "EasyRoutes Route", [
+        "EasyRoutes Route",
+        "easyroutes_route",
+        "easyRoutesRoute",
+        "easyroutesRoute",
+        "easy-routes-route",
+      ]);
+
+      const easyRoutesStopNumber = getOrderValue(order, "EasyRoutes Stop Number", [
+        "EasyRoutes Stop Number",
+        "easyroutes_stop_number",
+        "easyRoutesStopNumber",
+        "easy-routes-stop-number",
+      ]);
+
+      const easyRoutesRouteStart = getOrderValue(order, "EasyRoutes Route Start", [
+        "EasyRoutes Route Start",
+        "easyroutes_route_start",
+        "easyRoutesRouteStart",
+        "easy-routes-route-start",
+      ]);
+
+      const easyRoutesStopEta = getOrderValue(order, "EasyRoutes Stop ETA", [
+        "EasyRoutes Stop ETA",
+        "EasyRoutes Stop Eta",
+        "easyroutes_stop_eta",
+        "easyRoutesStopETA",
+        "easy-routes-stop-eta",
+      ]);
+
       const easyRoutesDriverName = getOrderValue(order, "EasyRoutes Driver", [
         "EasyRoutes Driver",
         "easyroutes driver",
@@ -296,6 +348,8 @@ export const loader = async ({ request }: { request: Request }) => {
         "driver_name",
         "driverName",
       ]);
+
+      const driverName = parseDriverFromEasyRoutesRoute(easyRoutesRoute) || easyRoutesDriverName;
 
       const packingInstructions =
         order.packingInstructionsMetafield?.value ||
@@ -363,10 +417,11 @@ export const loader = async ({ request }: { request: Request }) => {
         pickupLocationCountry,
 
         pickupDetails,
-        driverName: assignedDriver.name || easyRoutesDriverName,
-        driverPhone: assignedDriver.phone,
-        vehicleNumber: assignedDriver.vehicleNumber,
-        vehicleType: assignedDriver.vehicleType,
+        easyRoutesRoute,
+        easyRoutesStopNumber,
+        easyRoutesRouteStart,
+        easyRoutesStopEta,
+        driverName,
         packingInstructions,
         lineItems,
       };
@@ -381,10 +436,39 @@ export default function Index() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [ordersLimit, setOrdersLimit] = useState("20");
   const [printMode, setPrintMode] = useState<PrintMode>("labels");
+  const [deliveryDateSearch, setDeliveryDateSearch] = useState("");
+
+  const filteredOrders = useMemo(() => {
+    const search = normalizeSearchText(deliveryDateSearch);
+
+    if (!search) {
+      return orders;
+    }
+
+    return orders.filter((order) => {
+      const searchableText = normalizeSearchText(
+        [
+          order.name,
+          order.customerName,
+          order.deliveryDate,
+          order.deliveryDay,
+          order.deliveryMethod,
+          order.easyRoutesRoute,
+          order.easyRoutesStopNumber,
+          order.easyRoutesRouteStart,
+          order.easyRoutesStopEta,
+          order.driverName,
+          formatShippingAddress(order),
+        ].join(" "),
+      );
+
+      return searchableText.includes(search);
+    });
+  }, [orders, deliveryDateSearch]);
 
   const visibleOrders = useMemo(() => {
-    return orders.slice(0, Number(ordersLimit));
-  }, [orders, ordersLimit]);
+    return filteredOrders.slice(0, Number(ordersLimit));
+  }, [filteredOrders, ordersLimit]);
 
   const selectedOrders = useMemo(() => {
     return visibleOrders.filter((order) => selectedIds.includes(order.id));
@@ -548,6 +632,52 @@ export default function Index() {
           flex-wrap: wrap;
         }
 
+        .search-row {
+          padding: 16px 18px;
+          border-bottom: 1px solid #e1e3e5;
+          background: #fbfbfb;
+          display: grid;
+          grid-template-columns: minmax(260px, 420px) auto;
+          gap: 12px;
+          align-items: end;
+        }
+
+        .field label {
+          display: block;
+          font-size: 13px;
+          line-height: 18px;
+          font-weight: 650;
+          margin-bottom: 6px;
+        }
+
+        .search-input,
+        .select-box {
+          min-height: 36px;
+          border: 1px solid #babfc3;
+          border-radius: 8px;
+          background: #fff;
+          color: #202223;
+          font-size: 14px;
+          line-height: 20px;
+          padding: 8px 10px;
+          box-sizing: border-box;
+          outline: none;
+        }
+
+        .search-input {
+          width: 100%;
+        }
+
+        .template-select {
+          min-width: 250px;
+        }
+
+        .search-input:focus,
+        .select-box:focus {
+          border-color: #2c6ecb;
+          box-shadow: 0 0 0 1px #2c6ecb;
+        }
+
         .button {
           min-height: 36px;
           padding: 8px 14px;
@@ -579,28 +709,6 @@ export default function Index() {
 
         .button-secondary:hover {
           background: #f6f6f7;
-        }
-
-        .select-box {
-          min-height: 36px;
-          border: 1px solid #babfc3;
-          border-radius: 8px;
-          background: #fff;
-          color: #202223;
-          font-size: 14px;
-          line-height: 20px;
-          padding: 8px 10px;
-          box-sizing: border-box;
-          outline: none;
-        }
-
-        .template-select {
-          min-width: 250px;
-        }
-
-        .select-box:focus {
-          border-color: #2c6ecb;
-          box-shadow: 0 0 0 1px #2c6ecb;
         }
 
         .table-wrap {
@@ -700,7 +808,7 @@ export default function Index() {
         }
 
         .details-cell {
-          max-width: 340px;
+          max-width: 360px;
         }
 
         .empty-state {
@@ -718,6 +826,11 @@ export default function Index() {
         @media (max-width: 1000px) {
           .summary-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .page-header,
+          .search-row {
+            grid-template-columns: 1fr;
           }
 
           .page-header {
@@ -1067,7 +1180,7 @@ export default function Index() {
               <div className="eyebrow">Print centre</div>
               <h1 className="page-title">Box Label Printer</h1>
               <p className="page-description">
-                Select Shopify orders and print box labels, local packing slips, courier packing slips, or checklist.
+                Search orders by delivery date or EasyRoutes date, then print labels, packing slips, or checklist.
               </p>
             </div>
 
@@ -1096,8 +1209,8 @@ export default function Index() {
             </div>
 
             <div className="summary-card">
-              <div className="summary-label">Visible orders</div>
-              <div className="summary-value">{visibleOrders.length}</div>
+              <div className="summary-label">Filtered orders</div>
+              <div className="summary-value">{filteredOrders.length}</div>
             </div>
 
             <div className="summary-card">
@@ -1116,7 +1229,7 @@ export default function Index() {
               <div>
                 <h2 className="card-title">Orders</h2>
                 <p className="card-subtitle">
-                  Showing {visibleOrders.length} orders. Selected {selectedOrders.length} orders.
+                  Showing {visibleOrders.length} of {filteredOrders.length} matching orders.
                 </p>
               </div>
 
@@ -1129,16 +1242,45 @@ export default function Index() {
                     setSelectedIds([]);
                   }}
                 >
-                  <option value="5">Show 5 orders</option>
-                  <option value="10">Show 10 orders</option>
                   <option value="20">Show 20 orders</option>
                   <option value="50">Show 50 orders</option>
+                  <option value="100">Show 100 orders</option>
+                  <option value="250">Show 250 orders</option>
+                  <option value="1000">Show all loaded</option>
                 </select>
 
                 <button className="button-secondary" onClick={toggleAll}>
                   {selectedIds.length === visibleOrders.length ? "Unselect All" : "Select All"}
                 </button>
               </div>
+            </div>
+
+            <div className="search-row">
+              <div className="field">
+                <label htmlFor="deliveryDateSearch">Search by delivery date / EasyRoutes date / driver</label>
+                <input
+                  id="deliveryDateSearch"
+                  className="search-input"
+                  type="text"
+                  value={deliveryDateSearch}
+                  onChange={(event) => {
+                    setDeliveryDateSearch(event.target.value);
+                    setSelectedIds([]);
+                  }}
+                  placeholder="Example: May 23, 2026 / 23/05/2026 / Dave"
+                />
+              </div>
+
+              <button
+                className="button-secondary"
+                type="button"
+                onClick={() => {
+                  setDeliveryDateSearch("");
+                  setSelectedIds([]);
+                }}
+              >
+                Clear Search
+              </button>
             </div>
 
             {visibleOrders.length === 0 ? (
@@ -1154,7 +1296,7 @@ export default function Index() {
                       <th>Address</th>
                       <th>Delivery</th>
                       <th>Method</th>
-                      <th>Additional Details</th>
+                      <th>EasyRoutes Route</th>
                       <th>Driver</th>
                     </tr>
                   </thead>
@@ -1195,66 +1337,29 @@ export default function Index() {
                         </td>
 
                         <td className="details-cell">
-                          {order.customerTimeZone ? (
-                            <div className="muted-text">Timezone: {order.customerTimeZone}</div>
-                          ) : null}
-
-                          {order.deliveryPostalCode ? (
-                            <div className="muted-text">Delivery Postal Code: {order.deliveryPostalCode}</div>
-                          ) : null}
-
-                          {order.locationId ? <div className="muted-text">locationId: {order.locationId}</div> : null}
-
-                          {order.shopifyLocationId ? (
-                            <div className="muted-text">shopifyLocationId: {order.shopifyLocationId}</div>
-                          ) : null}
-
-                          {order.checkoutMethod ? (
-                            <div className="muted-text">Checkout Method: {order.checkoutMethod}</div>
-                          ) : null}
-
-                          {order.pickupLocationCompany || order.deliveryLocation || order.pickupDetails ? (
-                            <div className="muted-text">
-                              Pickup / Location:{" "}
-                              {order.pickupLocationCompany || order.deliveryLocation || order.pickupDetails}
-                            </div>
-                          ) : null}
-
-                          {formatPickupAddress(order) ? (
-                            <div className="muted-text">Pickup Address: {formatPickupAddress(order)}</div>
-                          ) : null}
-
-                          {order.packingInstructions ? (
-                            <div className="muted-text">Packing Instructions: {order.packingInstructions}</div>
-                          ) : null}
-
-                          {!order.customerTimeZone &&
-                          !order.deliveryPostalCode &&
-                          !order.locationId &&
-                          !order.shopifyLocationId &&
-                          !order.checkoutMethod &&
-                          !order.pickupLocationCompany &&
-                          !order.deliveryLocation &&
-                          !order.pickupDetails &&
-                          !order.packingInstructions &&
-                          !formatPickupAddress(order) ? (
+                          {order.easyRoutesRoute ? (
+                            <>
+                              <div className="primary-text">{order.easyRoutesRoute}</div>
+                              {order.easyRoutesStopNumber ? (
+                                <div className="muted-text">Stop Number: {order.easyRoutesStopNumber}</div>
+                              ) : null}
+                              {order.easyRoutesRouteStart ? (
+                                <div className="muted-text">Route Start: {order.easyRoutesRouteStart}</div>
+                              ) : null}
+                              {order.easyRoutesStopEta ? (
+                                <div className="muted-text">Stop ETA: {order.easyRoutesStopEta}</div>
+                              ) : null}
+                            </>
+                          ) : (
                             <span className="muted-text">-</span>
-                          ) : null}
+                          )}
                         </td>
 
                         <td>
                           {order.driverName ? (
-                            <>
-                              <span className="badge">{order.driverName}</span>
-                              {order.driverPhone ? <div className="muted-text">Phone: {order.driverPhone}</div> : null}
-                              {order.vehicleNumber || order.vehicleType ? (
-                                <div className="muted-text">
-                                  Vehicle: {[order.vehicleNumber, order.vehicleType].filter(Boolean).join(" - ")}
-                                </div>
-                              ) : null}
-                            </>
+                            <span className="badge">{order.driverName}</span>
                           ) : (
-                            <span className="badge badge-muted">Not assigned</span>
+                            <span className="badge badge-muted">Not found</span>
                           )}
                         </td>
                       </tr>
@@ -1312,6 +1417,27 @@ function LabelsPrint({ orders }: { orders: Order[] }) {
                   </>
                 ) : null}
 
+                {order.driverName ? (
+                  <>
+                    Driver: {order.driverName}
+                    <br />
+                  </>
+                ) : null}
+
+                {order.easyRoutesRoute ? (
+                  <>
+                    EasyRoutes Route: {order.easyRoutesRoute}
+                    <br />
+                  </>
+                ) : null}
+
+                {order.easyRoutesStopNumber ? (
+                  <>
+                    Stop Number: {order.easyRoutesStopNumber}
+                    <br />
+                  </>
+                ) : null}
+
                 {order.customerTimeZone ? (
                   <>
                     Customer TimeZone: {order.customerTimeZone}
@@ -1361,13 +1487,6 @@ function LabelsPrint({ orders }: { orders: Order[] }) {
                   </>
                 ) : null}
 
-                {formatDriverDetails(order) ? (
-                  <>
-                    {formatDriverDetails(order)}
-                    <br />
-                  </>
-                ) : null}
-
                 Order: {order.name}
               </div>
             </div>
@@ -1410,8 +1529,14 @@ function PackingSlipsPrint({
                           {order.pickupDetails ? ` ${order.pickupDetails}` : ""}
                         </div>
 
-                        {formatDriverDetails(order) ? (
-                          <div className="packing-driver-line">{formatDriverDetails(order)}</div>
+                        {order.driverName ? (
+                          <div className="packing-driver-line">Driver: {order.driverName}</div>
+                        ) : null}
+
+                        {order.easyRoutesRoute ? (
+                          <div className="packing-driver-line">
+                            EasyRoutes Route: {order.easyRoutesRoute}
+                          </div>
                         ) : null}
                       </div>
 
@@ -1675,21 +1800,11 @@ function formatPickupAddress(order: Order) {
     .join(", ");
 }
 
-function formatDriverDetails(order: Order) {
-  const vehicle = [order.vehicleNumber, order.vehicleType].filter(Boolean).join(" - ");
-
-  return [
-    order.driverName ? `Driver: ${order.driverName}` : "",
-    order.driverPhone ? `Phone: ${order.driverPhone}` : "",
-    vehicle ? `Vehicle: ${vehicle}` : "",
-  ]
-    .filter(Boolean)
-    .join(" | ");
-}
-
 function formatDriverPickupDetails(order: Order) {
   return [
-    formatDriverDetails(order),
+    order.driverName ? `Driver: ${order.driverName}` : "",
+    order.easyRoutesRoute ? `EasyRoutes Route: ${order.easyRoutesRoute}` : "",
+    order.easyRoutesStopNumber ? `Stop Number: ${order.easyRoutesStopNumber}` : "",
     order.pickupDetails,
     order.pickupLocationCompany,
     formatPickupAddress(order),
@@ -1698,33 +1813,19 @@ function formatDriverPickupDetails(order: Order) {
     .join("\n");
 }
 
-function parseDriverDetails(value: string | null | undefined): DriverDetails {
-  if (!value) {
-    return {
-      name: "",
-      phone: "",
-      vehicleNumber: "",
-      vehicleType: "",
-    };
+function parseDriverFromEasyRoutesRoute(route: string) {
+  if (!route) return "";
+
+  const parts = route
+    .split("-")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    return parts[1];
   }
 
-  try {
-    const parsed = JSON.parse(value);
-
-    return {
-      name: parsed?.name || "",
-      phone: parsed?.phone || "",
-      vehicleNumber: parsed?.vehicleNumber || "",
-      vehicleType: parsed?.vehicleType || "",
-    };
-  } catch {
-    return {
-      name: "",
-      phone: "",
-      vehicleNumber: "",
-      vehicleType: "",
-    };
-  }
+  return "";
 }
 
 function getOrderValue(
@@ -1774,6 +1875,14 @@ function normalizeKey(value: string) {
     .toLowerCase()
     .replace(/[_-]+/g, " ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/,/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
