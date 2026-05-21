@@ -65,6 +65,7 @@ type Order = {
   easyRoutesRouteStart: string;
   easyRoutesStopEta: string;
   driverName: string;
+  boxPreference: string;
   packingInstructions: string;
   lineItems: LineItem[];
 };
@@ -351,6 +352,13 @@ export const loader = async ({ request }: { request: Request }) => {
 
       const driverName = parseDriverFromEasyRoutesRoute(easyRoutesRoute) || easyRoutesDriverName;
 
+      const boxPreference = getOrderValue(order, "Box Preference", [
+        "Box Preference",
+        "box_preference",
+        "boxPreference",
+        "box-preference",
+      ]);
+
       const packingInstructions =
         order.packingInstructionsMetafield?.value ||
         getOrderValue(order, "Packing Instructions", [
@@ -422,6 +430,7 @@ export const loader = async ({ request }: { request: Request }) => {
         easyRoutesRouteStart,
         easyRoutesStopEta,
         driverName,
+        boxPreference,
         packingInstructions,
         lineItems,
       };
@@ -437,15 +446,27 @@ export default function Index() {
   const [ordersLimit, setOrdersLimit] = useState("20");
   const [printMode, setPrintMode] = useState<PrintMode>("labels");
   const [deliveryDateSearch, setDeliveryDateSearch] = useState("");
+  const [routeCourierFilter, setRouteCourierFilter] = useState<"all" | "local" | "courier">("all");
 
   const filteredOrders = useMemo(() => {
     const search = normalizeSearchText(deliveryDateSearch);
 
-    if (!search) {
-      return orders;
-    }
-
     return orders.filter((order) => {
+      const routeText = normalizeSearchText(order.easyRoutesRoute);
+      const isCourierRoute = routeText.includes("courier");
+
+      if (routeCourierFilter === "local" && isCourierRoute) {
+        return false;
+      }
+
+      if (routeCourierFilter === "courier" && !isCourierRoute) {
+        return false;
+      }
+
+      if (!search) {
+        return true;
+      }
+
       const searchableText = normalizeSearchText(
         [
           order.name,
@@ -454,9 +475,6 @@ export default function Index() {
           order.deliveryDay,
           order.deliveryMethod,
           order.easyRoutesRoute,
-          order.easyRoutesStopNumber,
-          order.easyRoutesRouteStart,
-          order.easyRoutesStopEta,
           order.driverName,
           formatShippingAddress(order),
         ].join(" "),
@@ -464,7 +482,7 @@ export default function Index() {
 
       return searchableText.includes(search);
     });
-  }, [orders, deliveryDateSearch]);
+  }, [orders, deliveryDateSearch, routeCourierFilter]);
 
   const visibleOrders = useMemo(() => {
     return filteredOrders.slice(0, Number(ordersLimit));
@@ -637,7 +655,7 @@ export default function Index() {
           border-bottom: 1px solid #e1e3e5;
           background: #fbfbfb;
           display: grid;
-          grid-template-columns: minmax(260px, 420px) auto;
+          grid-template-columns: minmax(240px, 1fr) minmax(220px, 280px) auto;
           gap: 12px;
           align-items: end;
         }
@@ -928,22 +946,23 @@ export default function Index() {
           }
 
           .label-logo {
-            width: 100px;
-            max-height: 45px;
+            width: 128px;
+            max-height: 56px;
             object-fit: contain;
-            margin-bottom: 8px;
+            margin-bottom: 7px;
           }
 
           .label-name {
-            font-size: 15px;
-            font-weight: 700;
+            font-size: 20px;
+            line-height: 1.1;
+            font-weight: 800;
             margin-bottom: 4px;
           }
 
           .label-address {
             font-size: 10px;
-            margin-bottom: 8px;
-            line-height: 1.3;
+            margin-bottom: 7px;
+            line-height: 1.25;
           }
 
           .label-date {
@@ -954,15 +973,20 @@ export default function Index() {
           }
 
           .label-details {
-            font-size: 12px;
+            font-size: 13px;
             font-style: italic;
-            line-height: 1.35;
+            line-height: 1.25;
+          }
+
+          .label-driver {
+            font-size: 16px;
+            font-weight: 800;
           }
 
           .packing-page {
             width: 210mm !important;
             min-height: 297mm !important;
-            padding: 12mm !important;
+            padding: 10mm 12mm 14mm !important;
             box-sizing: border-box !important;
             page-break-after: always !important;
             break-after: page !important;
@@ -975,6 +999,8 @@ export default function Index() {
 
           .packing-wrap {
             width: 100%;
+            page-break-inside: avoid;
+            break-inside: avoid;
           }
 
           .packing-header,
@@ -1094,6 +1120,13 @@ export default function Index() {
             padding: 10mm !important;
             box-sizing: border-box !important;
             font-size: 11px !important;
+            page-break-after: always !important;
+            break-after: page !important;
+          }
+
+          .checklist-page:last-child {
+            page-break-after: auto !important;
+            break-after: auto !important;
           }
 
           .checklist-header {
@@ -1105,6 +1138,12 @@ export default function Index() {
 
           .checklist-title {
             font-size: 20px;
+            font-weight: 700;
+          }
+
+          .checklist-date {
+            margin-top: 3px;
+            font-size: 13px;
             font-weight: 700;
           }
 
@@ -1141,15 +1180,15 @@ export default function Index() {
           }
 
           .checklist-driver-col {
-            width: 12%;
+            width: 14%;
           }
 
           .checklist-instructions-col {
-            width: 18%;
+            width: 20%;
           }
 
           .checklist-products-col {
-            width: 14%;
+            width: 17%;
           }
 
           .checklist-customer-name {
@@ -1267,8 +1306,25 @@ export default function Index() {
                     setDeliveryDateSearch(event.target.value);
                     setSelectedIds([]);
                   }}
-                  placeholder="Example: May 23, 2026 / 23/05/2026 / Dave"
+                  placeholder="Example: 21/05/2026 / May 21, 2026 / Trevor"
                 />
+              </div>
+
+              <div className="field">
+                <label htmlFor="routeCourierFilter">EasyRoutes Route filter</label>
+                <select
+                  id="routeCourierFilter"
+                  className="select-box"
+                  value={routeCourierFilter}
+                  onChange={(event) => {
+                    setRouteCourierFilter(event.target.value as "all" | "local" | "courier");
+                    setSelectedIds([]);
+                  }}
+                >
+                  <option value="all">All routes</option>
+                  <option value="local">Local orders - route does not contain Courier</option>
+                  <option value="courier">Courier orders - route contains Courier</option>
+                </select>
               </div>
 
               <button
@@ -1276,6 +1332,7 @@ export default function Index() {
                 type="button"
                 onClick={() => {
                   setDeliveryDateSearch("");
+                  setRouteCourierFilter("all");
                   setSelectedIds([]);
                 }}
               >
@@ -1384,7 +1441,7 @@ export default function Index() {
         ) : null}
 
         {printMode === "checklist" ? (
-          <ChecklistPrint orders={selectedOrders} title="WEDNESDAY - LOCAL - Checklist" />
+          <ChecklistPrint orders={selectedOrders} />
         ) : null}
       </div>
     </div>
@@ -1410,84 +1467,9 @@ function LabelsPrint({ orders }: { orders: Order[] }) {
               </div>
 
               <div className="label-details">
-                {order.deliveryMethod ? (
-                  <>
-                    Delivery Method: {order.deliveryMethod}
-                    <br />
-                  </>
-                ) : null}
-
-                {order.driverName ? (
-                  <>
-                    Driver: {order.driverName}
-                    <br />
-                  </>
-                ) : null}
-
-                {order.easyRoutesRoute ? (
-                  <>
-                    EasyRoutes Route: {order.easyRoutesRoute}
-                    <br />
-                  </>
-                ) : null}
-
-                {order.easyRoutesStopNumber ? (
-                  <>
-                    Stop Number: {order.easyRoutesStopNumber}
-                    <br />
-                  </>
-                ) : null}
-
-                {order.customerTimeZone ? (
-                  <>
-                    Customer TimeZone: {order.customerTimeZone}
-                    <br />
-                  </>
-                ) : null}
-
-                {order.deliveryPostalCode ? (
-                  <>
-                    Delivery Postal Code: {order.deliveryPostalCode}
-                    <br />
-                  </>
-                ) : null}
-
-                {order.locationId ? (
-                  <>
-                    locationId: {order.locationId}
-                    <br />
-                  </>
-                ) : null}
-
-                {order.shopifyLocationId ? (
-                  <>
-                    shopifyLocationId: {order.shopifyLocationId}
-                    <br />
-                  </>
-                ) : null}
-
-                {order.pickupLocationCompany ? (
-                  <>
-                    Pickup Location: {order.pickupLocationCompany}
-                    <br />
-                  </>
-                ) : null}
-
-                {formatPickupAddress(order) ? (
-                  <>
-                    Pickup Address: {formatPickupAddress(order)}
-                    <br />
-                  </>
-                ) : null}
-
-                {order.pickupDetails ? (
-                  <>
-                    Pickup Details: {order.pickupDetails}
-                    <br />
-                  </>
-                ) : null}
-
-                Order: {order.name}
+                {order.driverName ? <div className="label-driver">Driver: {order.driverName}</div> : null}
+                {order.pickupDetails ? <div>{order.pickupDetails}</div> : null}
+                {order.pickupLocationCompany ? <div>{order.pickupLocationCompany}</div> : null}
               </div>
             </div>
           ))}
@@ -1516,27 +1498,16 @@ function PackingSlipsPrint({
                 <tbody>
                   <tr>
                     <td className="packing-left">
-                      <div className="packing-type">Packing Slip - {type}</div>
-
                       <div className="packing-name">
                         {order.customerName || "Customer Name"}{" "}
                         <span className="packing-order">{order.name}</span>
                       </div>
 
                       <div className="packing-meta">
-                        <div>
-                          Delivery {order.deliveryDay || order.deliveryDate || ""}
-                          {order.pickupDetails ? ` ${order.pickupDetails}` : ""}
-                        </div>
-
-                        {order.driverName ? (
-                          <div className="packing-driver-line">Driver: {order.driverName}</div>
-                        ) : null}
-
                         {order.easyRoutesRoute ? (
-                          <div className="packing-driver-line">
-                            EasyRoutes Route: {order.easyRoutesRoute}
-                          </div>
+                          <div className="packing-driver-line">{order.easyRoutesRoute}</div>
+                        ) : order.driverName ? (
+                          <div className="packing-driver-line">{order.driverName}</div>
                         ) : null}
                       </div>
 
@@ -1544,11 +1515,18 @@ function PackingSlipsPrint({
                         <b>Packer ID:</b> __________
                       </div>
 
-                      {order.packingInstructions ? (
+                      {(order.boxPreference || order.packingInstructions) ? (
                         <div className="packing-instructions">
-                          <b>Packing Instructions:</b> {order.packingInstructions}
+                          <i>
+                            <b>Box Preference - Packing Instructions:</b>{" "}
+                            {[order.boxPreference, order.packingInstructions].filter(Boolean).join(" - ")}
+                          </i>
                         </div>
-                      ) : null}
+                      ) : (
+                        <div className="packing-instructions">
+                          <i><b>Box Preference - Packing Instructions:</b></i>
+                        </div>
+                      )}
                     </td>
 
                     <td className="packing-right">
@@ -1570,7 +1548,7 @@ function PackingSlipsPrint({
                   <tr>
                     <td className="packing-label">Grocery &amp; Fridge</td>
                     <td className="packing-value">
-                      <ItemLines items={[...groups.grocery, ...groups.fresh]} />
+                      <ItemLines items={groups.grocery} />
                     </td>
                   </tr>
 
@@ -1596,9 +1574,17 @@ function PackingSlipsPrint({
               </table>
 
               <div className="packing-footer">
-                Your box might look <u>overpacked</u> – that’s just to make sure it
-                arrives happy. All packing is reused and recyclable. <b>Need help?</b>{" "}
-                Text us on {SUPPORT_PHONE}.
+                {type === "Local Orders" ? (
+                  <>
+                    Please leave your empty boxes out for collection on your next delivery. We’re also happy to
+                    reuse plastic bottles as ice packs. <b>Need help?</b> Text us on {SUPPORT_PHONE}.
+                  </>
+                ) : (
+                  <>
+                    Your box might look <u>overpacked</u> – that’s just to make sure it arrives happy. All packing is reused and recyclable.{" "}
+                    <b>Need help?</b> Text us on {SUPPORT_PHONE}.
+                  </>
+                )}
               </div>
 
               <div className="packing-bottom">
@@ -1615,60 +1601,70 @@ function PackingSlipsPrint({
   );
 }
 
-function ChecklistPrint({ orders, title }: { orders: Order[]; title: string }) {
+function ChecklistPrint({ orders }: { orders: Order[] }) {
+  const pages = chunkArray(orders, 4);
+  const totalPages = pages.length || 1;
+  const deliveryDateLabel = getChecklistDeliveryDateLabel(orders);
+
   return (
-    <div className="checklist-page">
-      <div className="checklist-header">
-        <div className="checklist-title">{title}</div>
-        <div className="checklist-support">Need help? Text us on {SUPPORT_PHONE}</div>
-      </div>
+    <>
+      {pages.map((pageOrders, pageIndex) => (
+        <div className="checklist-page" key={pageIndex}>
+          <div className="checklist-header">
+            <div>
+              <div className="checklist-title">Checklist</div>
+              {deliveryDateLabel ? (
+                <div className="checklist-date">Delivery Date: {deliveryDateLabel}</div>
+              ) : null}
+            </div>
+            <div className="checklist-support">Need help? Text us on {SUPPORT_PHONE}</div>
+          </div>
 
-      <table className="checklist-table">
-        <thead>
-          <tr>
-            <th className="checklist-name-col">Name</th>
-            <th className="checklist-driver-col">Driver/Pickup Details</th>
-            <th className="checklist-instructions-col">Packing Instructions</th>
-            <th className="checklist-products-col">Groceries</th>
-            <th className="checklist-products-col">Frozen</th>
-            <th className="checklist-products-col">Fresh</th>
-            <th className="checklist-products-col">Baked</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {orders.map((order) => {
-            const groups = groupLineItems(order.lineItems);
-            const freshItems = [...groups.fruit, ...groups.fresh];
-
-            return (
-              <tr key={order.id}>
-                <td>
-                  <div className="checklist-customer-name">{order.customerName || "Customer Name"}</div>
-                  <div className="checklist-order-name">{order.name}</div>
-                </td>
-                <td>{formatDriverPickupDetails(order)}</td>
-                <td>{order.packingInstructions}</td>
-                <td>
-                  <ChecklistItemLines items={groups.grocery} />
-                </td>
-                <td>
-                  <ChecklistItemLines items={groups.frozen} />
-                </td>
-                <td>
-                  <ChecklistItemLines items={freshItems} />
-                </td>
-                <td>
-                  <ChecklistItemLines items={groups.baked} />
-                </td>
+          <table className="checklist-table">
+            <thead>
+              <tr>
+                <th className="checklist-name-col">Name</th>
+                <th className="checklist-driver-col">Driver/Pickup Details</th>
+                <th className="checklist-instructions-col">Packing Instructions</th>
+                <th className="checklist-products-col">Groceries</th>
+                <th className="checklist-products-col">Frozen</th>
+                <th className="checklist-products-col">Fresh Baked</th>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            </thead>
 
-      <div className="checklist-footer">Need help? Text us on {SUPPORT_PHONE}</div>
-    </div>
+            <tbody>
+              {pageOrders.map((order) => {
+                const groups = groupLineItems(order.lineItems);
+
+                return (
+                  <tr key={order.id}>
+                    <td>
+                      <div className="checklist-customer-name">{order.customerName || "Customer Name"}</div>
+                      <div className="checklist-order-name">{order.name}</div>
+                    </td>
+                    <td>{formatDriverPickupDetails(order)}</td>
+                    <td>{[order.boxPreference, order.packingInstructions].filter(Boolean).join("\n")}</td>
+                    <td>
+                      <ChecklistItemLines items={groups.grocery} />
+                    </td>
+                    <td>
+                      <ChecklistItemLines items={groups.frozen} />
+                    </td>
+                    <td>
+                      <ChecklistItemLines items={groups.baked} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          <div className="checklist-footer">
+            Page {pageIndex + 1} of {totalPages} · Need help? Text us on {SUPPORT_PHONE}
+          </div>
+        </div>
+      ))}
+    </>
   );
 }
 
@@ -1716,70 +1712,36 @@ function groupLineItems(lineItems: LineItem[]) {
       fruit: [] as LineItem[],
       grocery: [] as LineItem[],
       frozen: [] as LineItem[],
-      fresh: [] as LineItem[],
       baked: [] as LineItem[],
     },
   );
 }
 
-function getLineItemCategory(item: LineItem): "fruit" | "grocery" | "frozen" | "fresh" | "baked" {
-  const searchable = [
-    item.title,
-    item.productTitle,
-    item.variantTitle,
-    item.productType,
-    ...item.tags,
-  ]
-    .join(" ")
-    .toLowerCase();
+function getLineItemCategory(item: LineItem): "fruit" | "grocery" | "frozen" | "baked" {
+  const productType = normalizeProductType(item.productType);
 
-  if (
-    searchable.includes("fruit") ||
-    searchable.includes("veg") ||
-    searchable.includes("vegetable") ||
-    searchable.includes("banana") ||
-    searchable.includes("apple") ||
-    searchable.includes("berry") ||
-    searchable.includes("berries")
-  ) {
-    return "fruit";
+  if (productType === "grocery") {
+    return "grocery";
   }
 
-  if (
-    searchable.includes("bread") ||
-    searchable.includes("cake") ||
-    searchable.includes("buns") ||
-    searchable.includes("pastry") ||
-    searchable.includes("baked") ||
-    searchable.includes("bakery")
-  ) {
-    return "baked";
-  }
-
-  if (
-    searchable.includes("chicken") ||
-    searchable.includes("beef") ||
-    searchable.includes("pork") ||
-    searchable.includes("fish") ||
-    searchable.includes("meat") ||
-    searchable.includes("frozen")
-  ) {
+  if (productType === "frozen") {
     return "frozen";
   }
 
-  if (
-    searchable.includes("milk") ||
-    searchable.includes("cheese") ||
-    searchable.includes("yoghurt") ||
-    searchable.includes("yogurt") ||
-    searchable.includes("cream") ||
-    searchable.includes("fridge") ||
-    searchable.includes("refrigerated")
-  ) {
-    return "fresh";
+  if (productType === "bakery") {
+    return "baked";
   }
 
-  return "grocery";
+  return "fruit";
+}
+
+function normalizeProductType(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function formatShippingAddress(order: Order) {
@@ -1803,14 +1765,23 @@ function formatPickupAddress(order: Order) {
 function formatDriverPickupDetails(order: Order) {
   return [
     order.driverName ? `Driver: ${order.driverName}` : "",
-    order.easyRoutesRoute ? `EasyRoutes Route: ${order.easyRoutesRoute}` : "",
-    order.easyRoutesStopNumber ? `Stop Number: ${order.easyRoutesStopNumber}` : "",
     order.pickupDetails,
     order.pickupLocationCompany,
-    formatPickupAddress(order),
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function getChecklistDeliveryDateLabel(orders: Order[]) {
+  const dates = Array.from(
+    new Set(
+      orders
+        .map((order) => order.deliveryDate || order.deliveryDay)
+        .filter(Boolean),
+    ),
+  );
+
+  return dates.join(", ");
 }
 
 function parseDriverFromEasyRoutesRoute(route: string) {
