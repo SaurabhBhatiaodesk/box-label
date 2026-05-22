@@ -526,7 +526,34 @@ export default function Index() {
     window.print();
   };
 
+  const handleExportWord = async () => {
+    if (selectedOrders.length === 0) {
+      alert("Please select at least one order.");
+      return;
+    }
+
+    if (
+      printMode !== "localPackingSlip" &&
+      printMode !== "courierPackingSlip" &&
+      printMode !== "checklist"
+    ) {
+      alert("Word export is available for Packing Slips and Checklist only.");
+      return;
+    }
+
+    try {
+      await exportSelectedOrdersToWord(selectedOrders, printMode);
+    } catch (error) {
+      console.error("Word export failed:", error);
+      alert("Word export failed. Please check the console/logs and try again.");
+    }
+  };
+
   const printButtonLabel = getPrintButtonLabel(printMode);
+  const showWordExportButton =
+    printMode === "localPackingSlip" ||
+    printMode === "courierPackingSlip" ||
+    printMode === "checklist";
 
   return (
     <div className={`app-root print-mode-${printMode}`}>
@@ -1253,6 +1280,12 @@ export default function Index() {
                 <option value="checklist">Checklist</option>
               </select>
 
+              {showWordExportButton ? (
+                <button className="button-secondary" type="button" onClick={handleExportWord}>
+                  Export to Word
+                </button>
+              ) : null}
+
               <button className="button" onClick={handlePrint}>
                 {printButtonLabel}
               </button>
@@ -1721,6 +1754,282 @@ function formatChecklistLineItem(item: LineItem) {
   }
 
   return `[${quantity}] - ${sku} - ${title}`;
+}
+
+async function exportSelectedOrdersToWord(orders: Order[], printMode: PrintMode) {
+  const docx = await import("docx");
+  const { saveAs } = await import("file-saver");
+
+  if (printMode === "checklist") {
+    const document = createChecklistWordDocument(docx, orders);
+    const blob = await docx.Packer.toBlob(document);
+    saveAs(blob, getWordExportFileName("checklist", orders));
+    return;
+  }
+
+  const document = createPackingSlipsWordDocument(docx, orders, printMode);
+  const blob = await docx.Packer.toBlob(document);
+  saveAs(blob, getWordExportFileName(printMode, orders));
+}
+
+function createPackingSlipsWordDocument(docx: any, orders: Order[], printMode: PrintMode) {
+  return new docx.Document({
+    sections: orders.map((order) => {
+      const groups = groupLineItems(order.lineItems);
+      const templateLabel = printMode === "courierPackingSlip" ? "Courier Orders" : "Local Orders";
+
+      return {
+        properties: {
+          page: {
+            size: {
+              width: 11906,
+              height: 16838,
+            },
+            margin: {
+              top: 720,
+              right: 720,
+              bottom: 720,
+              left: 720,
+            },
+          },
+        },
+        children: [
+          createWordParagraph(docx, `${order.customerName || "Customer Name"} ${order.name}`, {
+            bold: true,
+            size: 32,
+            spacingAfter: 120,
+          }),
+          createWordParagraph(docx, templateLabel, {
+            bold: true,
+            size: 20,
+            spacingAfter: 120,
+          }),
+          createWordParagraph(docx, order.easyRoutesRoute || order.driverName || "", {
+            bold: true,
+            size: 20,
+            spacingAfter: 120,
+          }),
+          createWordParagraph(docx, "Packer ID: __________", {
+            size: 20,
+            spacingAfter: 120,
+          }),
+          createWordParagraph(
+            docx,
+            `Box Preference - Packing Instructions: ${[order.boxPreference, order.packingInstructions]
+              .filter(Boolean)
+              .join(" - ")}`,
+            {
+              italics: true,
+              size: 20,
+              spacingAfter: 180,
+            },
+          ),
+          new docx.Table({
+            width: {
+              size: 100,
+              type: docx.WidthType.PERCENTAGE,
+            },
+            rows: [
+              createWordTwoColumnRow(docx, "Fruit & Veg", groups.fruit.map(formatLineItem)),
+              createWordTwoColumnRow(docx, "Grocery & Fridge", groups.grocery.map(formatLineItem)),
+              createWordTwoColumnRow(docx, "Frozen", groups.frozen.map(formatLineItem)),
+              createWordTwoColumnRow(docx, "Fresh Baked", groups.baked.map(formatLineItem)),
+            ],
+          }),
+          createWordParagraph(docx, "You just did something good for local farmers.", {
+            alignment: "center",
+            size: 22,
+            spacingBefore: 240,
+          }),
+          createWordParagraph(docx, `Not bad for a ${order.deliveryDay || "delivery day"}.`, {
+            alignment: "center",
+            bold: true,
+            size: 26,
+          }),
+        ],
+      };
+    }),
+  });
+}
+
+function createChecklistWordDocument(docx: any, orders: Order[]) {
+  const deliveryDateLabel = getChecklistDeliveryDateLabel(orders);
+
+  return new docx.Document({
+    sections: [
+      {
+        properties: {
+          page: {
+            size: {
+              width: 16838,
+              height: 11906,
+            },
+            margin: {
+              top: 567,
+              right: 567,
+              bottom: 567,
+              left: 567,
+            },
+          },
+        },
+        children: [
+          createWordParagraph(docx, "Checklist", {
+            bold: true,
+            size: 32,
+            spacingAfter: deliveryDateLabel ? 60 : 180,
+          }),
+          ...(deliveryDateLabel
+            ? [
+                createWordParagraph(docx, `Delivery Date: ${deliveryDateLabel}`, {
+                  bold: true,
+                  size: 20,
+                  spacingAfter: 180,
+                }),
+              ]
+            : []),
+          new docx.Table({
+            width: {
+              size: 100,
+              type: docx.WidthType.PERCENTAGE,
+            },
+            rows: [
+              new docx.TableRow({
+                tableHeader: true,
+                children: [
+                  createWordCell(docx, ["Name"], { bold: true, width: 14 }),
+                  createWordCell(docx, ["Driver/Pickup Details"], { bold: true, width: 14 }),
+                  createWordCell(docx, ["Packing Instructions"], { bold: true, width: 18 }),
+                  createWordCell(docx, ["Groceries"], { bold: true, width: 18 }),
+                  createWordCell(docx, ["Frozen"], { bold: true, width: 18 }),
+                  createWordCell(docx, ["Fresh Baked"], { bold: true, width: 18 }),
+                ],
+              }),
+              ...orders.map((order) => {
+                const groups = groupLineItems(order.lineItems);
+
+                return new docx.TableRow({
+                  cantSplit: true,
+                  children: [
+                    createWordCell(docx, [order.customerName || "Customer Name", order.name], { width: 14 }),
+                    createWordCell(docx, splitWordLines(formatDriverPickupDetails(order)), { width: 14 }),
+                    createWordCell(
+                      docx,
+                      splitWordLines([order.boxPreference, order.packingInstructions].filter(Boolean).join("\n")),
+                      { width: 18 },
+                    ),
+                    createWordCell(docx, groups.grocery.map(formatChecklistLineItem), { width: 18 }),
+                    createWordCell(docx, groups.frozen.map(formatChecklistLineItem), { width: 18 }),
+                    createWordCell(docx, groups.baked.map(formatLineItem), { width: 18 }),
+                  ],
+                });
+              }),
+            ],
+          }),
+        ],
+      },
+    ],
+  });
+}
+
+function createWordTwoColumnRow(docx: any, label: string, lines: string[]) {
+  return new docx.TableRow({
+    cantSplit: true,
+    children: [
+      createWordCell(docx, [label], { bold: true, width: 28, fontSize: 24 }),
+      createWordCell(docx, lines, { width: 72 }),
+    ],
+  });
+}
+
+function createWordCell(
+  docx: any,
+  lines: string[],
+  options: {
+    bold?: boolean;
+    width?: number;
+    fontSize?: number;
+  } = {},
+) {
+  const safeLines = lines.length > 0 ? lines : [""];
+
+  return new docx.TableCell({
+    width: options.width
+      ? {
+          size: options.width,
+          type: docx.WidthType.PERCENTAGE,
+        }
+      : undefined,
+    margins: {
+      top: 90,
+      right: 90,
+      bottom: 90,
+      left: 90,
+    },
+    children: safeLines.map((line) =>
+      createWordParagraph(docx, line, {
+        bold: options.bold,
+        size: options.fontSize || 18,
+        spacingAfter: 40,
+      }),
+    ),
+  });
+}
+
+function createWordParagraph(
+  docx: any,
+  text: string,
+  options: {
+    bold?: boolean;
+    italics?: boolean;
+    size?: number;
+    alignment?: "left" | "center";
+    spacingBefore?: number;
+    spacingAfter?: number;
+  } = {},
+) {
+  const alignment = options.alignment === "center" ? docx.AlignmentType.CENTER : docx.AlignmentType.LEFT;
+
+  return new docx.Paragraph({
+    alignment,
+    spacing: {
+      before: options.spacingBefore || 0,
+      after: options.spacingAfter || 0,
+    },
+    children: [
+      new docx.TextRun({
+        text: text || "",
+        bold: Boolean(options.bold),
+        italics: Boolean(options.italics),
+        size: options.size || 18,
+      }),
+    ],
+  });
+}
+
+function splitWordLines(value: string) {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function getWordExportFileName(printMode: PrintMode | "checklist", orders: Order[]) {
+  const deliveryDate = getChecklistDeliveryDateLabel(orders)
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+
+  const suffix = deliveryDate || new Date().toISOString().slice(0, 10);
+
+  if (printMode === "checklist") {
+    return `joy-checklist-${suffix}.docx`;
+  }
+
+  if (printMode === "courierPackingSlip") {
+    return `joy-courier-packing-slips-${suffix}.docx`;
+  }
+
+  return `joy-local-packing-slips-${suffix}.docx`;
 }
 
 function groupLineItems(lineItems: LineItem[]) {
