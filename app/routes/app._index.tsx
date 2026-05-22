@@ -8,7 +8,7 @@ const LOGO_URL =
 const SUPPORT_PHONE = "0480 079 218";
 const ORDERS_FETCH_LIMIT = 1000;
 
-type PrintMode = "labels" | "localPackingSlip" | "courierPackingSlip" | "checklist";
+type PrintMode = "labels" | "courierLabels" | "localPackingSlip" | "courierPackingSlip" | "checklist";
 
 type CustomAttribute = {
   key: string;
@@ -23,6 +23,7 @@ type LineItem = {
   currentQuantity: number;
   unfulfilledQuantity: number;
   variantTitle: string;
+  sku: string;
   productType: string;
   tags: string[];
 };
@@ -128,6 +129,9 @@ export const loader = async ({ request }: { request: Request }) => {
                       currentQuantity
                       unfulfilledQuantity
                       variantTitle
+                      variant {
+                        sku
+                      }
                       product {
                         title
                         productType
@@ -382,6 +386,7 @@ export const loader = async ({ request }: { request: Request }) => {
             currentQuantity: Number(item.currentQuantity || 0),
             unfulfilledQuantity: Number(item.unfulfilledQuantity || 0),
             variantTitle: item.variantTitle || "",
+            sku: item.variant?.sku || "",
             productType: item.product?.productType || "",
             tags: item.product?.tags || [],
           };
@@ -946,8 +951,8 @@ export default function Index() {
           }
 
           .label-logo {
-            width: 128px;
-            max-height: 56px;
+            width: 180px;
+            max-height: 78px;
             object-fit: contain;
             margin-bottom: 7px;
           }
@@ -984,9 +989,9 @@ export default function Index() {
           }
 
           .packing-page {
-            width: 210mm !important;
-            min-height: 297mm !important;
-            padding: 10mm 12mm 14mm !important;
+            width: auto !important;
+            min-height: auto !important;
+            padding: 0 !important;
             box-sizing: border-box !important;
             page-break-after: always !important;
             break-after: page !important;
@@ -999,8 +1004,6 @@ export default function Index() {
 
           .packing-wrap {
             width: 100%;
-            page-break-inside: avoid;
-            break-inside: avoid;
           }
 
           .packing-header,
@@ -1070,6 +1073,11 @@ export default function Index() {
             width: 100%;
           }
 
+          .packing-main tr {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+
           .packing-main td {
             border: 1px solid #000;
             padding: 8px;
@@ -1115,13 +1123,13 @@ export default function Index() {
           }
 
           .checklist-page {
-            width: 297mm !important;
-            min-height: 210mm !important;
-            padding: 10mm !important;
+            width: auto !important;
+            min-height: auto !important;
+            padding: 0 !important;
             box-sizing: border-box !important;
             font-size: 11px !important;
-            page-break-after: always !important;
-            break-after: page !important;
+            page-break-after: auto !important;
+            break-after: auto !important;
           }
 
           .checklist-page:last-child {
@@ -1157,6 +1165,15 @@ export default function Index() {
             border-collapse: collapse;
             table-layout: fixed;
             margin-top: 0;
+          }
+
+          .checklist-table thead {
+            display: table-header-group;
+          }
+
+          .checklist-table tbody tr {
+            page-break-inside: avoid;
+            break-inside: avoid;
           }
 
           .checklist-table th,
@@ -1229,7 +1246,8 @@ export default function Index() {
                 value={printMode}
                 onChange={(event) => setPrintMode(event.target.value as PrintMode)}
               >
-                <option value="labels">Box Labels</option>
+                <option value="labels">Box Labels - Local Orders</option>
+                <option value="courierLabels">Box Labels - Courier Orders</option>
                 <option value="localPackingSlip">Packing Slip - Local Orders</option>
                 <option value="courierPackingSlip">Packing Slip - Courier Orders</option>
                 <option value="checklist">Checklist</option>
@@ -1430,7 +1448,9 @@ export default function Index() {
       </div>
 
       <div className="print-area">
-        {printMode === "labels" ? <LabelsPrint orders={selectedOrders} /> : null}
+        {printMode === "labels" ? <LabelsPrint orders={selectedOrders} template="local" /> : null}
+
+        {printMode === "courierLabels" ? <LabelsPrint orders={selectedOrders} template="courier" /> : null}
 
         {printMode === "localPackingSlip" ? (
           <PackingSlipsPrint orders={selectedOrders} type="Local Orders" />
@@ -1448,31 +1468,41 @@ export default function Index() {
   );
 }
 
-function LabelsPrint({ orders }: { orders: Order[] }) {
+function LabelsPrint({
+  orders,
+  template,
+}: {
+  orders: Order[];
+  template: "local" | "courier";
+}) {
   return (
     <>
       {chunkArray(orders, 8).map((pageOrders, pageIndex) => (
         <div className="label-page" key={pageIndex}>
-          {pageOrders.map((order) => (
-            <div className="label-box" key={order.id}>
-              <img className="label-logo" src={LOGO_URL} alt="Joy Wholefoods" />
+          {pageOrders.map((order) => {
+            const labelRouteText =
+              template === "courier" || isCourierOrder(order)
+                ? "Courier"
+                : order.driverName;
 
-              <div className="label-name">{order.customerName || "Customer Name"}</div>
+            return (
+              <div className="label-box" key={order.id}>
+                <img className="label-logo" src={LOGO_URL} alt="Joy Wholefoods" />
 
-              <div className="label-address">{formatShippingAddress(order)}</div>
+                <div className="label-name">{order.customerName || "Customer Name"}</div>
 
-              <div className="label-date">
-                {order.deliveryDate || "Delivery Date"}
-                {order.deliveryDay ? ` - ${order.deliveryDay}` : ""}
+                <div className="label-address">{formatShippingAddress(order)}</div>
+
+                <div className="label-date">{order.deliveryDate || "Delivery Date"}</div>
+
+                <div className="label-details">
+                  {labelRouteText ? <div className="label-driver">{labelRouteText}</div> : null}
+                  {order.pickupDetails ? <div>{order.pickupDetails}</div> : null}
+                  {order.pickupLocationCompany ? <div>{order.pickupLocationCompany}</div> : null}
+                </div>
               </div>
-
-              <div className="label-details">
-                {order.driverName ? <div className="label-driver">Driver: {order.driverName}</div> : null}
-                {order.pickupDetails ? <div>{order.pickupDetails}</div> : null}
-                {order.pickupLocationCompany ? <div>{order.pickupLocationCompany}</div> : null}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ))}
     </>
@@ -1481,7 +1511,6 @@ function LabelsPrint({ orders }: { orders: Order[] }) {
 
 function PackingSlipsPrint({
   orders,
-  type,
 }: {
   orders: Order[];
   type: "Local Orders" | "Courier Orders";
@@ -1573,20 +1602,6 @@ function PackingSlipsPrint({
                 </tbody>
               </table>
 
-              <div className="packing-footer">
-                {type === "Local Orders" ? (
-                  <>
-                    Please leave your empty boxes out for collection on your next delivery. We’re also happy to
-                    reuse plastic bottles as ice packs. <b>Need help?</b> Text us on {SUPPORT_PHONE}.
-                  </>
-                ) : (
-                  <>
-                    Your box might look <u>overpacked</u> – that’s just to make sure it arrives happy. All packing is reused and recyclable.{" "}
-                    <b>Need help?</b> Text us on {SUPPORT_PHONE}.
-                  </>
-                )}
-              </div>
-
               <div className="packing-bottom">
                 You just did something good for local farmers.
                 <div className="packing-big">
@@ -1602,69 +1617,58 @@ function PackingSlipsPrint({
 }
 
 function ChecklistPrint({ orders }: { orders: Order[] }) {
-  const pages = chunkArray(orders, 4);
-  const totalPages = pages.length || 1;
   const deliveryDateLabel = getChecklistDeliveryDateLabel(orders);
 
   return (
-    <>
-      {pages.map((pageOrders, pageIndex) => (
-        <div className="checklist-page" key={pageIndex}>
-          <div className="checklist-header">
-            <div>
-              <div className="checklist-title">Checklist</div>
-              {deliveryDateLabel ? (
-                <div className="checklist-date">Delivery Date: {deliveryDateLabel}</div>
-              ) : null}
-            </div>
-            <div className="checklist-support">Need help? Text us on {SUPPORT_PHONE}</div>
-          </div>
-
-          <table className="checklist-table">
-            <thead>
-              <tr>
-                <th className="checklist-name-col">Name</th>
-                <th className="checklist-driver-col">Driver/Pickup Details</th>
-                <th className="checklist-instructions-col">Packing Instructions</th>
-                <th className="checklist-products-col">Groceries</th>
-                <th className="checklist-products-col">Frozen</th>
-                <th className="checklist-products-col">Fresh Baked</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {pageOrders.map((order) => {
-                const groups = groupLineItems(order.lineItems);
-
-                return (
-                  <tr key={order.id}>
-                    <td>
-                      <div className="checklist-customer-name">{order.customerName || "Customer Name"}</div>
-                      <div className="checklist-order-name">{order.name}</div>
-                    </td>
-                    <td>{formatDriverPickupDetails(order)}</td>
-                    <td>{[order.boxPreference, order.packingInstructions].filter(Boolean).join("\n")}</td>
-                    <td>
-                      <ChecklistItemLines items={groups.grocery} />
-                    </td>
-                    <td>
-                      <ChecklistItemLines items={groups.frozen} />
-                    </td>
-                    <td>
-                      <ChecklistItemLines items={groups.baked} />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-
-          <div className="checklist-footer">
-            Page {pageIndex + 1} of {totalPages} · Need help? Text us on {SUPPORT_PHONE}
-          </div>
+    <div className="checklist-page">
+      <div className="checklist-header">
+        <div>
+          <div className="checklist-title">Checklist</div>
+          {deliveryDateLabel ? (
+            <div className="checklist-date">Delivery Date: {deliveryDateLabel}</div>
+          ) : null}
         </div>
-      ))}
-    </>
+      </div>
+
+      <table className="checklist-table">
+        <thead>
+          <tr>
+            <th className="checklist-name-col">Name</th>
+            <th className="checklist-driver-col">Driver/Pickup Details</th>
+            <th className="checklist-instructions-col">Packing Instructions</th>
+            <th className="checklist-products-col">Groceries</th>
+            <th className="checklist-products-col">Frozen</th>
+            <th className="checklist-products-col">Fresh Baked</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {orders.map((order) => {
+            const groups = groupLineItems(order.lineItems);
+
+            return (
+              <tr key={order.id}>
+                <td>
+                  <div className="checklist-customer-name">{order.customerName || "Customer Name"}</div>
+                  <div className="checklist-order-name">{order.name}</div>
+                </td>
+                <td>{formatDriverPickupDetails(order)}</td>
+                <td>{[order.boxPreference, order.packingInstructions].filter(Boolean).join("\n")}</td>
+                <td>
+                  <ChecklistItemLines items={groups.grocery} showSku />
+                </td>
+                <td>
+                  <ChecklistItemLines items={groups.frozen} showSku />
+                </td>
+                <td>
+                  <ChecklistItemLines items={groups.baked} />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -1680,14 +1684,20 @@ function ItemLines({ items }: { items: LineItem[] }) {
   );
 }
 
-function ChecklistItemLines({ items }: { items: LineItem[] }) {
+function ChecklistItemLines({
+  items,
+  showSku = false,
+}: {
+  items: LineItem[];
+  showSku?: boolean;
+}) {
   if (items.length === 0) return null;
 
   return (
     <>
       {items.map((item) => (
         <div className="checklist-item-line" key={item.id}>
-          {formatLineItem(item)}
+          {showSku ? formatChecklistLineItem(item) : formatLineItem(item)}
         </div>
       ))}
     </>
@@ -1699,6 +1709,18 @@ function formatLineItem(item: LineItem) {
   const title = item.productTitle || item.title;
 
   return `[${quantity}] ${title}`;
+}
+
+function formatChecklistLineItem(item: LineItem) {
+  const quantity = item.currentQuantity || item.unfulfilledQuantity || item.quantity || 0;
+  const title = item.productTitle || item.title;
+  const sku = item.sku?.trim();
+
+  if (!sku) {
+    return `[${quantity}] - ${title}`;
+  }
+
+  return `[${quantity}] - ${sku} - ${title}`;
 }
 
 function groupLineItems(lineItems: LineItem[]) {
@@ -1720,19 +1742,19 @@ function groupLineItems(lineItems: LineItem[]) {
 function getLineItemCategory(item: LineItem): "fruit" | "grocery" | "frozen" | "baked" {
   const productType = normalizeProductType(item.productType);
 
-  if (productType === "grocery") {
-    return "grocery";
+  if (productType === "fruit and veg") {
+    return "fruit";
   }
 
   if (productType === "frozen") {
     return "frozen";
   }
 
-  if (productType === "bakery") {
+  if (productType === "bakery" || productType === "fresh baked") {
     return "baked";
   }
 
-  return "fruit";
+  return "grocery";
 }
 
 function normalizeProductType(value: string) {
@@ -1748,6 +1770,11 @@ function formatShippingAddress(order: Order) {
   return [order.address, order.city, order.province, order.zip, order.country]
     .filter(Boolean)
     .join(", ");
+}
+
+
+function isCourierOrder(order: Order) {
+  return normalizeSearchText(order.easyRoutesRoute).includes("courier");
 }
 
 function formatPickupAddress(order: Order) {
@@ -1869,10 +1896,11 @@ function chunkArray<T>(array: T[], size: number): T[][] {
 }
 
 function getPrintButtonLabel(printMode: PrintMode) {
+  if (printMode === "courierLabels") return "Print Courier Box Labels";
   if (printMode === "localPackingSlip") return "Print Local Packing Slips";
   if (printMode === "courierPackingSlip") return "Print Courier Packing Slips";
   if (printMode === "checklist") return "Print Checklist";
-  return "Print Labels";
+  return "Print Local Box Labels";
 }
 
 function getPageCss(printMode: PrintMode) {
@@ -1880,7 +1908,16 @@ function getPageCss(printMode: PrintMode) {
     return `
       @page {
         size: A4 landscape;
-        margin: 0;
+        margin: 10mm;
+      }
+    `;
+  }
+
+  if (printMode === "localPackingSlip" || printMode === "courierPackingSlip") {
+    return `
+      @page {
+        size: A4 portrait;
+        margin: 10mm 12mm 14mm;
       }
     `;
   }
