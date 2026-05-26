@@ -107,14 +107,6 @@ export const loader = async ({ request }: { request: Request }) => {
                   packingInstructionsMetafield: metafield(namespace: "custom", key: "packing_instructions") {
                     value
                   }
-
-                  packingInstructionsMetafieldAlt: metafield(namespace: "custom", key: "packing_instructions_") {
-                    value
-                  }
-
-                  boxPreferenceMetafield: metafield(namespace: "custom", key: "box_preference") {
-                    value
-                  }
                 }
 
                 shippingAddress {
@@ -373,18 +365,15 @@ export const loader = async ({ request }: { request: Request }) => {
 
       const driverName = parseDriverFromEasyRoutesRoute(easyRoutesRoute) || easyRoutesDriverName;
 
-      const boxPreference =
-        order.customer?.boxPreferenceMetafield?.value ||
-        getOrderValue(order, "Box Preference", [
-          "Box Preference",
-          "box_preference",
-          "boxPreference",
-          "box-preference",
-        ]);
+      const boxPreference = getOrderValue(order, "Box Preference", [
+        "Box Preference",
+        "box_preference",
+        "boxPreference",
+        "box-preference",
+      ]);
 
       const packingInstructions =
         order.customer?.packingInstructionsMetafield?.value ||
-        order.customer?.packingInstructionsMetafieldAlt?.value ||
         order.orderPackingInstructionsMetafield?.value ||
         getOrderValue(order, "Packing Instructions", [
           "Packing Instructions",
@@ -1087,14 +1076,6 @@ export default function Index() {
             font-weight: normal;
           }
 
-          .packing-type {
-            font-size: 12px;
-            font-weight: bold;
-            text-transform: uppercase;
-            margin-bottom: 7px;
-            letter-spacing: 0.5px;
-          }
-
           .packing-meta {
             font-size: 13px;
             font-weight: bold;
@@ -1154,11 +1135,6 @@ export default function Index() {
             margin-top: 8px;
           }
 
-          .packing-footer {
-            margin-top: 16px;
-            font-size: 13px;
-          }
-
           .packing-bottom {
             text-align: center;
             margin-top: 20px;
@@ -1180,11 +1156,6 @@ export default function Index() {
             break-after: auto !important;
           }
 
-          .checklist-page:last-child {
-            page-break-after: auto !important;
-            break-after: auto !important;
-          }
-
           .checklist-header {
             display: flex;
             justify-content: space-between;
@@ -1201,11 +1172,6 @@ export default function Index() {
             margin-top: 3px;
             font-size: 13px;
             font-weight: 700;
-          }
-
-          .checklist-support {
-            font-size: 12px;
-            font-weight: 600;
           }
 
           .checklist-table {
@@ -1266,13 +1232,6 @@ export default function Index() {
 
           .checklist-item-line {
             margin: 0 0 3px 0;
-          }
-
-          .checklist-footer {
-            margin-top: 12px;
-            text-align: center;
-            font-size: 12px;
-            font-weight: 600;
           }
         }
       `}</style>
@@ -2171,18 +2130,6 @@ function formatBoxPreferencePackingInstructions(order: Order) {
 
 function isCourierOrder(order: Order) {
   return normalizeSearchText(order.easyRoutesRoute).includes("courier");
-}
-
-function formatPickupAddress(order: Order) {
-  return [
-    order.pickupLocationAddressLine1,
-    order.pickupLocationCity,
-    order.pickupLocationRegion,
-    order.pickupLocationPostalCode,
-    order.pickupLocationCountry,
-  ]
-    .filter(Boolean)
-    .join(", ");
 }
 
 function formatDriverPickupDetails(order: Order) {
