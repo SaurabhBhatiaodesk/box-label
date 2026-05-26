@@ -3,12 +3,17 @@ import { useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 
 const LOGO_URL =
-  "https://cdn.shopify.com/s/files/1/0483/3758/4295/files/Joy_Wholefoods_-_Primary_Logo_-_Dark.png?v=1775531358";
+  "https://cdn.shopify.com/s/files/1/0483/3758/4295/files/Untitled_3508_x_700_px.jpg?v=1779782616";
 
 const SUPPORT_PHONE = "0480 079 218";
 const ORDERS_FETCH_LIMIT = 1000;
 
-type PrintMode = "labels" | "courierLabels" | "localPackingSlip" | "courierPackingSlip" | "checklist";
+type PrintMode =
+  | "labels"
+  | "courierLabels"
+  | "localPackingSlip"
+  | "courierPackingSlip"
+  | "checklist";
 
 type CustomAttribute = {
   key: string;
@@ -98,6 +103,18 @@ export const loader = async ({ request }: { request: Request }) => {
                   lastName
                   email
                   phone
+
+                  packingInstructionsMetafield: metafield(namespace: "custom", key: "packing_instructions") {
+                    value
+                  }
+
+                  packingInstructionsMetafieldAlt: metafield(namespace: "custom", key: "packing_instructions_") {
+                    value
+                  }
+
+                  boxPreferenceMetafield: metafield(namespace: "custom", key: "box_preference") {
+                    value
+                  }
                 }
 
                 shippingAddress {
@@ -116,7 +133,7 @@ export const loader = async ({ request }: { request: Request }) => {
                   value
                 }
 
-                packingInstructionsMetafield: metafield(namespace: "custom", key: "packing_instructions") {
+                orderPackingInstructionsMetafield: metafield(namespace: "custom", key: "packing_instructions") {
                   value
                 }
 
@@ -356,15 +373,19 @@ export const loader = async ({ request }: { request: Request }) => {
 
       const driverName = parseDriverFromEasyRoutesRoute(easyRoutesRoute) || easyRoutesDriverName;
 
-      const boxPreference = getOrderValue(order, "Box Preference", [
-        "Box Preference",
-        "box_preference",
-        "boxPreference",
-        "box-preference",
-      ]);
+      const boxPreference =
+        order.customer?.boxPreferenceMetafield?.value ||
+        getOrderValue(order, "Box Preference", [
+          "Box Preference",
+          "box_preference",
+          "boxPreference",
+          "box-preference",
+        ]);
 
       const packingInstructions =
-        order.packingInstructionsMetafield?.value ||
+        order.customer?.packingInstructionsMetafield?.value ||
+        order.customer?.packingInstructionsMetafieldAlt?.value ||
+        order.orderPackingInstructionsMetafield?.value ||
         getOrderValue(order, "Packing Instructions", [
           "Packing Instructions",
           "packing_instructions",
@@ -978,8 +999,8 @@ export default function Index() {
           }
 
           .label-logo {
-            width: 180px;
-            max-height: 78px;
+            width: 235px;
+            max-height: 82px;
             object-fit: contain;
             margin-bottom: 7px;
           }
@@ -992,7 +1013,7 @@ export default function Index() {
           }
 
           .label-address {
-            font-size: 10px;
+            font-size: 11px;
             margin-bottom: 7px;
             line-height: 1.25;
           }
@@ -1096,7 +1117,7 @@ export default function Index() {
           }
 
           .packing-logo {
-            max-width: 220px;
+            max-width: 240px;
             width: 100%;
           }
 
@@ -1493,9 +1514,7 @@ export default function Index() {
           <PackingSlipsPrint orders={selectedOrders} type="Courier Orders" />
         ) : null}
 
-        {printMode === "checklist" ? (
-          <ChecklistPrint orders={selectedOrders} />
-        ) : null}
+        {printMode === "checklist" ? <ChecklistPrint orders={selectedOrders} /> : null}
       </div>
     </div>
   );
@@ -1524,7 +1543,7 @@ function LabelsPrint({
 
                 <div className="label-name">{order.customerName || "Customer Name"}</div>
 
-                <div className="label-address">{formatShippingAddress(order)}</div>
+                <div className="label-address">{formatBoxLabelAddress(order)}</div>
 
                 <div className="label-date">{order.deliveryDate || "Delivery Date"}</div>
 
@@ -1577,18 +1596,12 @@ function PackingSlipsPrint({
                         <b>Packer ID:</b> __________
                       </div>
 
-                      {(order.boxPreference || order.packingInstructions) ? (
-                        <div className="packing-instructions">
-                          <i>
-                            <b>Box Preference - Packing Instructions:</b>{" "}
-                            {[order.boxPreference, order.packingInstructions].filter(Boolean).join(" - ")}
-                          </i>
-                        </div>
-                      ) : (
-                        <div className="packing-instructions">
-                          <i><b>Box Preference - Packing Instructions:</b></i>
-                        </div>
-                      )}
+                      <div className="packing-instructions">
+                        <i>
+                          <b>Box Preference - Packing Instructions:</b>{" "}
+                          {formatBoxPreferencePackingInstructions(order)}
+                        </i>
+                      </div>
                     </td>
 
                     <td className="packing-right">
@@ -1686,7 +1699,7 @@ function ChecklistPrint({ orders }: { orders: Order[] }) {
                   <div className="checklist-order-name">{order.name}</div>
                 </td>
                 <td>{formatDriverPickupDetails(order)}</td>
-                <td>{[order.boxPreference, order.packingInstructions].filter(Boolean).join("\n")}</td>
+                <td>{formatBoxPreferencePackingInstructions(order)}</td>
                 <td>
                   <ChecklistItemLines items={groups.grocery} showSku />
                 </td>
@@ -1694,7 +1707,7 @@ function ChecklistPrint({ orders }: { orders: Order[] }) {
                   <ChecklistItemLines items={groups.frozen} showSku />
                 </td>
                 <td>
-                  <ChecklistItemLines items={groups.baked} />
+                  <ChecklistItemLines items={groups.baked} showSku />
                 </td>
               </tr>
             );
@@ -1774,9 +1787,11 @@ async function exportSelectedOrdersToWord(orders: Order[], printMode: PrintMode)
 
 function createPackingSlipsWordDocument(docx: any, orders: Order[], printMode: PrintMode) {
   return new docx.Document({
+    styles: getWordStyles(),
     sections: orders.map((order) => {
       const groups = groupLineItems(order.lineItems);
       const templateLabel = printMode === "courierPackingSlip" ? "Courier Orders" : "Local Orders";
+      const footer = createWordFooter(docx, order.customerName, order.deliveryDate || order.deliveryDay);
 
       return {
         properties: {
@@ -1792,6 +1807,9 @@ function createPackingSlipsWordDocument(docx: any, orders: Order[], printMode: P
               left: 720,
             },
           },
+        },
+        footers: {
+          default: footer,
         },
         children: [
           createWordParagraph(docx, `${order.customerName || "Customer Name"} ${order.name}`, {
@@ -1815,9 +1833,7 @@ function createPackingSlipsWordDocument(docx: any, orders: Order[], printMode: P
           }),
           createWordParagraph(
             docx,
-            `Box Preference - Packing Instructions: ${[order.boxPreference, order.packingInstructions]
-              .filter(Boolean)
-              .join(" - ")}`,
+            `Box Preference - Packing Instructions: ${formatBoxPreferencePackingInstructions(order)}`,
             {
               italics: true,
               size: 20,
@@ -1856,6 +1872,7 @@ function createChecklistWordDocument(docx: any, orders: Order[]) {
   const deliveryDateLabel = getChecklistDeliveryDateLabel(orders);
 
   return new docx.Document({
+    styles: getWordStyles(),
     sections: [
       {
         properties: {
@@ -1867,10 +1884,13 @@ function createChecklistWordDocument(docx: any, orders: Order[]) {
             margin: {
               top: 567,
               right: 567,
-              bottom: 567,
+              bottom: 720,
               left: 567,
             },
           },
+        },
+        footers: {
+          default: createWordFooter(docx, "Checklist", deliveryDateLabel),
         },
         children: [
           createWordParagraph(docx, "Checklist", {
@@ -1914,12 +1934,12 @@ function createChecklistWordDocument(docx: any, orders: Order[]) {
                     createWordCell(docx, splitWordLines(formatDriverPickupDetails(order)), { width: 14 }),
                     createWordCell(
                       docx,
-                      splitWordLines([order.boxPreference, order.packingInstructions].filter(Boolean).join("\n")),
+                      splitWordLines(formatBoxPreferencePackingInstructions(order)),
                       { width: 18 },
                     ),
                     createWordCell(docx, groups.grocery.map(formatChecklistLineItem), { width: 18 }),
                     createWordCell(docx, groups.frozen.map(formatChecklistLineItem), { width: 18 }),
-                    createWordCell(docx, groups.baked.map(formatLineItem), { width: 18 }),
+                    createWordCell(docx, groups.baked.map(formatChecklistLineItem), { width: 18 }),
                   ],
                 });
               }),
@@ -1927,6 +1947,61 @@ function createChecklistWordDocument(docx: any, orders: Order[]) {
           }),
         ],
       },
+    ],
+  });
+}
+
+function getWordStyles() {
+  return {
+    default: {
+      document: {
+        run: {
+          font: "Calibri",
+        },
+        paragraph: {
+          spacing: {
+            after: 0,
+          },
+        },
+      },
+    },
+  };
+}
+
+function createWordFooter(docx: any, customerName: string, deliveryDate: string) {
+  return new docx.Footer({
+    children: [
+      new docx.Paragraph({
+        alignment: docx.AlignmentType.CENTER,
+        children: [
+          new docx.TextRun({
+            text: customerName || "",
+            bold: true,
+            font: "Calibri",
+            size: 18,
+          }),
+          new docx.TextRun({
+            text: deliveryDate ? `  |  ${deliveryDate}  |  Page ` : "  |  Page ",
+            font: "Calibri",
+            size: 18,
+          }),
+          new docx.TextRun({
+            children: [docx.PageNumber.CURRENT],
+            font: "Calibri",
+            size: 18,
+          }),
+          new docx.TextRun({
+            text: " of ",
+            font: "Calibri",
+            size: 18,
+          }),
+          new docx.TextRun({
+            children: [docx.PageNumber.TOTAL_PAGES],
+            font: "Calibri",
+            size: 18,
+          }),
+        ],
+      }),
     ],
   });
 }
@@ -2001,6 +2076,7 @@ function createWordParagraph(
         bold: Boolean(options.bold),
         italics: Boolean(options.italics),
         size: options.size || 18,
+        font: "Calibri",
       }),
     ],
   });
@@ -2081,6 +2157,17 @@ function formatShippingAddress(order: Order) {
     .join(", ");
 }
 
+function formatBoxLabelAddress(order: Order) {
+  return [order.address, order.city]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function formatBoxPreferencePackingInstructions(order: Order) {
+  return [order.boxPreference, order.packingInstructions]
+    .filter(Boolean)
+    .join(" - ");
+}
 
 function isCourierOrder(order: Order) {
   return normalizeSearchText(order.easyRoutesRoute).includes("courier");
