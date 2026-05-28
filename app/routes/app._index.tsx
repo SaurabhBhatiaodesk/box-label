@@ -1530,6 +1530,8 @@ function PackingSlipsPrint({
     <>
       {orders.map((order) => {
         const groups = groupLineItems(order.lineItems);
+        const packingInstructionsText = formatBoxPreferencePackingInstructions(order);
+        const packingInstructionsLabel = getBoxPreferencePackingInstructionsLabel(order);
 
         return (
           <div className="packing-page" key={order.id}>
@@ -1555,12 +1557,13 @@ function PackingSlipsPrint({
                         <b>Packer ID:</b> __________
                       </div>
 
-                      <div className="packing-instructions">
-                        <i>
-                          <b>Box Preference - Packing Instructions:</b>{" "}
-                          {formatBoxPreferencePackingInstructions(order)}
-                        </i>
-                      </div>
+                      {packingInstructionsText ? (
+                        <div className="packing-instructions">
+                          <i>
+                            <b>{packingInstructionsLabel}:</b> {packingInstructionsText}
+                          </i>
+                        </div>
+                      ) : null}
                     </td>
 
                     <td className="packing-right">
@@ -1790,15 +1793,19 @@ function createPackingSlipsWordDocument(docx: any, orders: Order[], printMode: P
             size: 20,
             spacingAfter: 120,
           }),
-          createWordParagraph(
-            docx,
-            `Box Preference - Packing Instructions: ${formatBoxPreferencePackingInstructions(order)}`,
-            {
-              italics: true,
-              size: 20,
-              spacingAfter: 180,
-            },
-          ),
+          ...(formatBoxPreferencePackingInstructions(order)
+            ? [
+                createWordParagraph(
+                  docx,
+                  `${getBoxPreferencePackingInstructionsLabel(order)}: ${formatBoxPreferencePackingInstructions(order)}`,
+                  {
+                    italics: true,
+                    size: 20,
+                    spacingAfter: 180,
+                  },
+                ),
+              ]
+            : []),
           new docx.Table({
             width: {
               size: 100,
@@ -2123,18 +2130,41 @@ function formatBoxLabelAddress(order: Order) {
 }
 
 function formatBoxPreferencePackingInstructions(order: Order) {
-  const boxPreferenceRaw = order.boxPreference?.trim() || "";
-  const boxPreferenceNormalized = boxPreferenceRaw.toLowerCase();
-
-  const allowedBoxPreference =
-    boxPreferenceNormalized === "styrofoam" ||
-    boxPreferenceNormalized === "cardboard box"
-      ? boxPreferenceRaw
-      : "";
+  const allowedBoxPreference = getAllowedBoxPreference(order.boxPreference);
 
   return [allowedBoxPreference, order.packingInstructions]
     .filter(Boolean)
     .join(" - ");
+}
+
+function getBoxPreferencePackingInstructionsLabel(order: Order) {
+  const allowedBoxPreference = getAllowedBoxPreference(order.boxPreference);
+  const hasPackingInstructions = Boolean(order.packingInstructions?.trim());
+
+  if (allowedBoxPreference && hasPackingInstructions) {
+    return "Box Preference - Packing Instructions";
+  }
+
+  if (allowedBoxPreference) {
+    return "Box Preference";
+  }
+
+  if (hasPackingInstructions) {
+    return "Packing Instructions";
+  }
+
+  return "";
+}
+
+function getAllowedBoxPreference(value: string) {
+  const rawValue = value?.trim() || "";
+  const normalizedValue = rawValue.toLowerCase().replace(/[’`]/g, "'");
+
+  if (normalizedValue === "styrofoam" || normalizedValue === "cardboard box") {
+    return rawValue;
+  }
+
+  return "";
 }
 
 function isCourierOrder(order: Order) {
