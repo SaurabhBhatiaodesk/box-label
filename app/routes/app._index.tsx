@@ -1722,10 +1722,10 @@ function formatChecklistLineItem(item: LineItem) {
   const sku = item.sku?.trim();
 
   if (!sku) {
-    return `[${quantity}] - ${title}`;
+    return `[${quantity}] ${title}`;
   }
 
-  return `[${quantity}] - ${sku} - ${title}`;
+  return `[${quantity}] ${sku} - ${title}`;
 }
 
 async function exportSelectedOrdersToWord(orders: Order[], printMode: PrintMode) {
@@ -2123,7 +2123,16 @@ function formatBoxLabelAddress(order: Order) {
 }
 
 function formatBoxPreferencePackingInstructions(order: Order) {
-  return [order.boxPreference, order.packingInstructions]
+  const boxPreferenceRaw = order.boxPreference?.trim() || "";
+  const boxPreferenceNormalized = boxPreferenceRaw.toLowerCase();
+
+  const allowedBoxPreference =
+    boxPreferenceNormalized === "styrofoam" ||
+    boxPreferenceNormalized === "cardboard box"
+      ? boxPreferenceRaw
+      : "";
+
+  return [allowedBoxPreference, order.packingInstructions]
     .filter(Boolean)
     .join(" - ");
 }
