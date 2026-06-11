@@ -23,7 +23,7 @@ type CustomAttribute = {
 type LineItem = {
   id: string;
   title: string;
-  productTitle: string;
+  productName: string;
   quantity: number;
   currentQuantity: number;
   unfulfilledQuantity: number;
@@ -133,6 +133,7 @@ export const loader = async ({ request }: { request: Request }) => {
                   edges {
                     node {
                       id
+                      name
                       title
                       quantity
                       currentQuantity
@@ -391,7 +392,9 @@ export const loader = async ({ request }: { request: Request }) => {
           return {
             id: item.id,
             title: item.title || item.product?.title || "",
-            productTitle: item.product?.title || item.title || "",
+            productName: cleanLineItemName(
+              item.name || item.title || item.product?.title || "",
+            ),
             quantity: Number(item.quantity || 0),
             currentQuantity: Number(item.currentQuantity || 0),
             unfulfilledQuantity: Number(item.unfulfilledQuantity || 0),
@@ -973,7 +976,7 @@ export default function Index() {
           }
 
           .label-box {
-            border: 1px solid #000;
+            border: none;
             box-sizing: border-box;
             padding: 6mm 5mm;
             text-align: center;
@@ -1703,25 +1706,43 @@ function ChecklistItemLines({
 
   return (
     <>
-      {items.map((item) => (
-        <div className="checklist-item-line" key={item.id}>
-          {showSku ? formatChecklistLineItem(item) : formatLineItem(item)}
-        </div>
-      ))}
+      {items.map((item) => {
+        const quantity = getLineItemQuantity(item);
+        const title = getLineItemDisplayName(item);
+        const sku = item.sku?.trim();
+        const details = showSku && sku ? `${sku} - ${title}` : title;
+
+        return (
+          <div className="checklist-item-line" key={item.id}>
+            <strong>[{quantity}]</strong> {details}
+          </div>
+        );
+      })}
     </>
   );
 }
 
-function formatLineItem(item: LineItem) {
-  const quantity = item.currentQuantity || item.unfulfilledQuantity || item.quantity || 0;
-  const title = item.productTitle || item.title;
+function getLineItemQuantity(item: LineItem) {
+  return item.currentQuantity || item.unfulfilledQuantity || item.quantity || 0;
+}
 
-  return `[${quantity}] ${title}`;
+function getLineItemDisplayName(item: LineItem) {
+  return cleanLineItemName(item.productName || item.title || "");
+}
+
+function cleanLineItemName(value: string) {
+  return (value || "")
+    .replace(/\s*[-–—]\s*default title\s*$/i, "")
+    .trim();
+}
+
+function formatLineItem(item: LineItem) {
+  return `[${getLineItemQuantity(item)}] ${getLineItemDisplayName(item)}`;
 }
 
 function formatChecklistLineItem(item: LineItem) {
-  const quantity = item.currentQuantity || item.unfulfilledQuantity || item.quantity || 0;
-  const title = item.productTitle || item.title;
+  const quantity = getLineItemQuantity(item);
+  const title = getLineItemDisplayName(item);
   const sku = item.sku?.trim();
 
   if (!sku) {
@@ -1734,26 +1755,41 @@ function formatChecklistLineItem(item: LineItem) {
 async function exportSelectedOrdersToWord(orders: Order[], printMode: PrintMode) {
   const docx = await import("docx");
   const { saveAs } = await import("file-saver");
+  const logoData = await fetchWordLogoData();
 
   if (printMode === "checklist") {
-    const document = createChecklistWordDocument(docx, orders);
+    const document = createChecklistWordDocument(docx, orders, logoData);
     const blob = await docx.Packer.toBlob(document);
     saveAs(blob, getWordExportFileName("checklist", orders));
     return;
   }
 
-  const document = createPackingSlipsWordDocument(docx, orders, printMode);
+  const document = createPackingSlipsWordDocument(docx, orders, logoData);
   const blob = await docx.Packer.toBlob(document);
   saveAs(blob, getWordExportFileName(printMode, orders));
 }
 
-function createPackingSlipsWordDocument(docx: any, orders: Order[], printMode: PrintMode) {
+async function fetchWordLogoData() {
+  const response = await fetch(LOGO_URL, {
+    cache: "force-cache",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Unable to load the Joy Wholefoods logo (${response.status}).`);
+  }
+
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+function createPackingSlipsWordDocument(
+  docx: any,
+  orders: Order[],
+  logoData: Uint8Array,
+) {
   return new docx.Document({
     styles: getWordStyles(),
     sections: orders.map((order) => {
       const groups = groupLineItems(order.lineItems);
-      const templateLabel = printMode === "courierPackingSlip" ? "Courier Orders" : "Local Orders";
-      const footer = createWordFooter(docx, order.customerName, order.deliveryDate || order.deliveryDay);
 
       return {
         properties: {
@@ -1770,18 +1806,11 @@ function createPackingSlipsWordDocument(docx: any, orders: Order[], printMode: P
             },
           },
         },
-        footers: {
-          default: footer,
-        },
         children: [
+          createWordLogoParagraph(docx, logoData, "right"),
           createWordParagraph(docx, `${order.customerName || "Customer Name"} ${order.name}`, {
             bold: true,
             size: 32,
-            spacingAfter: 120,
-          }),
-          createWordParagraph(docx, templateLabel, {
-            bold: true,
-            size: 20,
             spacingAfter: 120,
           }),
           createWordParagraph(docx, order.easyRoutesRoute || order.driverName || "", {
@@ -1834,7 +1863,11 @@ function createPackingSlipsWordDocument(docx: any, orders: Order[], printMode: P
   });
 }
 
-function createChecklistWordDocument(docx: any, orders: Order[]) {
+function createChecklistWordDocument(
+  docx: any,
+  orders: Order[],
+  logoData: Uint8Array,
+) {
   const deliveryDateLabel = getChecklistDeliveryDateLabel(orders);
 
   return new docx.Document({
@@ -1855,10 +1888,8 @@ function createChecklistWordDocument(docx: any, orders: Order[]) {
             },
           },
         },
-        footers: {
-          default: createWordFooter(docx, "Checklist", deliveryDateLabel),
-        },
         children: [
+          createWordLogoParagraph(docx, logoData, "right"),
           createWordParagraph(docx, "Checklist", {
             bold: true,
             size: 32,
@@ -1896,16 +1927,20 @@ function createChecklistWordDocument(docx: any, orders: Order[]) {
                 return new docx.TableRow({
                   cantSplit: true,
                   children: [
-                    createWordCell(docx, [order.customerName || "Customer Name", order.name], { width: 14 }),
-                    createWordCell(docx, splitWordLines(formatDriverPickupDetails(order)), { width: 14 }),
+                    createWordCell(docx, [order.customerName || "Customer Name", order.name], {
+                      width: 14,
+                    }),
+                    createWordCell(docx, splitWordLines(formatDriverPickupDetails(order)), {
+                      width: 14,
+                    }),
                     createWordCell(
                       docx,
                       splitWordLines(formatBoxPreferencePackingInstructions(order)),
                       { width: 18 },
                     ),
-                    createWordCell(docx, groups.grocery.map(formatChecklistLineItem), { width: 18 }),
-                    createWordCell(docx, groups.frozen.map(formatChecklistLineItem), { width: 18 }),
-                    createWordCell(docx, groups.baked.map(formatChecklistLineItem), { width: 18 }),
+                    createWordChecklistItemsCell(docx, groups.grocery, { width: 18 }),
+                    createWordChecklistItemsCell(docx, groups.frozen, { width: 18 }),
+                    createWordChecklistItemsCell(docx, groups.baked, { width: 18 }),
                   ],
                 });
               }),
@@ -1934,41 +1969,84 @@ function getWordStyles() {
   };
 }
 
-function createWordFooter(docx: any, customerName: string, deliveryDate: string) {
-  return new docx.Footer({
+function createWordLogoParagraph(
+  docx: any,
+  logoData: Uint8Array,
+  alignment: "left" | "center" | "right" = "right",
+) {
+  const wordAlignment =
+    alignment === "center"
+      ? docx.AlignmentType.CENTER
+      : alignment === "left"
+        ? docx.AlignmentType.LEFT
+        : docx.AlignmentType.RIGHT;
+
+  return new docx.Paragraph({
+    alignment: wordAlignment,
+    spacing: {
+      after: 120,
+    },
     children: [
-      new docx.Paragraph({
-        alignment: docx.AlignmentType.CENTER,
-        children: [
-          new docx.TextRun({
-            text: customerName || "",
-            bold: true,
-            font: "Calibri",
-            size: 18,
-          }),
-          new docx.TextRun({
-            text: deliveryDate ? `  |  ${deliveryDate}  |  Page ` : "  |  Page ",
-            font: "Calibri",
-            size: 18,
-          }),
-          new docx.TextRun({
-            children: [docx.PageNumber.CURRENT],
-            font: "Calibri",
-            size: 18,
-          }),
-          new docx.TextRun({
-            text: " of ",
-            font: "Calibri",
-            size: 18,
-          }),
-          new docx.TextRun({
-            children: [docx.PageNumber.TOTAL_PAGES],
-            font: "Calibri",
-            size: 18,
-          }),
-        ],
+      new docx.ImageRun({
+        data: logoData,
+        type: "jpg",
+        transformation: {
+          width: 240,
+          height: 48,
+        },
       }),
     ],
+  });
+}
+
+function createWordChecklistItemsCell(
+  docx: any,
+  items: LineItem[],
+  options: {
+    width?: number;
+  } = {},
+) {
+  return new docx.TableCell({
+    width: options.width
+      ? {
+          size: options.width,
+          type: docx.WidthType.PERCENTAGE,
+        }
+      : undefined,
+    margins: {
+      top: 90,
+      right: 90,
+      bottom: 90,
+      left: 90,
+    },
+    children:
+      items.length > 0
+        ? items.map((item) => {
+            const quantity = getLineItemQuantity(item);
+            const title = getLineItemDisplayName(item);
+            const sku = item.sku?.trim();
+            const details = sku ? `${sku} - ${title}` : title;
+
+            return new docx.Paragraph({
+              spacing: {
+                after: 40,
+              },
+              children: [
+                new docx.TextRun({
+                  text: `[${quantity}]`,
+                  bold: true,
+                  size: 18,
+                  font: "Calibri",
+                }),
+                new docx.TextRun({
+                  text: ` ${details}`,
+                  size: 18,
+                  font: "Calibri",
+                }),
+              ],
+            });
+          })
+        : [createWordParagraph(docx, "", { size: 18 })],
   });
 }
 
@@ -2077,6 +2155,10 @@ function getWordExportFileName(printMode: PrintMode | "checklist", orders: Order
 function groupLineItems(lineItems: LineItem[]) {
   return lineItems.reduce(
     (groups, item) => {
+      if (isSeasonalBoxLineItem(item)) {
+        return groups;
+      }
+
       const category = getLineItemCategory(item);
       groups[category].push(item);
       return groups;
@@ -2087,6 +2169,45 @@ function groupLineItems(lineItems: LineItem[]) {
       frozen: [] as LineItem[],
       baked: [] as LineItem[],
     },
+  );
+}
+
+function isSeasonalBoxLineItem(item: LineItem) {
+  const normalizedTags = (item.tags || []).map((tag) => normalizeSearchText(tag));
+  const hasParentBoxTag = normalizedTags.some((tag) =>
+    [
+      "seasonal box",
+      "seasonal-box",
+      "parent box",
+      "box parent",
+      "bundle parent",
+      "parent bundle",
+    ].includes(tag),
+  );
+
+  if (hasParentBoxTag) {
+    return true;
+  }
+
+  const name = normalizeSearchText(getLineItemDisplayName(item))
+    .replace(/&/g, "and")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!name.endsWith(" box")) {
+    return false;
+  }
+
+  return (
+    name.includes("fruit and veg box") ||
+    name.includes("fruit veg box") ||
+    name.includes("organic farm box") ||
+    name.includes("regen meat box") ||
+    name.includes("organic staples box") ||
+    name.includes("fruit only organic box") ||
+    name.includes("veg only organic box") ||
+    name.includes("seasonal box")
   );
 }
 
