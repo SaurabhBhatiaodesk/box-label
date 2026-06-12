@@ -976,7 +976,9 @@ export default function Index() {
           }
 
           .label-box {
-            border: none;
+            border: 0 !important;
+            outline: none !important;
+            box-shadow: none !important;
             box-sizing: border-box;
             padding: 6mm 5mm;
             text-align: center;
@@ -1031,7 +1033,7 @@ export default function Index() {
           .packing-page {
             width: auto !important;
             min-height: auto !important;
-            padding: 0 !important;
+            padding: 10mm 12mm 14mm !important;
             box-sizing: border-box !important;
             page-break-after: always !important;
             break-after: page !important;
@@ -1152,7 +1154,7 @@ export default function Index() {
           .checklist-page {
             width: auto !important;
             min-height: auto !important;
-            padding: 0 !important;
+            padding: 10mm !important;
             box-sizing: border-box !important;
             font-size: 11px !important;
             page-break-after: auto !important;
@@ -1613,12 +1615,6 @@ function PackingSlipsPrint({
                 </tbody>
               </table>
 
-              <div className="packing-bottom">
-                You just did something good for local farmers.
-                <div className="packing-big">
-                  Not bad for a {order.deliveryDay || "delivery day"}.
-                </div>
-              </div>
             </div>
           </div>
         );
@@ -1846,16 +1842,6 @@ function createPackingSlipsWordDocument(
               createWordTwoColumnRow(docx, "Frozen", groups.frozen.map(formatLineItem)),
               createWordTwoColumnRow(docx, "Fresh Baked", groups.baked.map(formatLineItem)),
             ],
-          }),
-          createWordParagraph(docx, "You just did something good for local farmers.", {
-            alignment: "center",
-            size: 22,
-            spacingBefore: 240,
-          }),
-          createWordParagraph(docx, `Not bad for a ${order.deliveryDay || "delivery day"}.`, {
-            alignment: "center",
-            bold: true,
-            size: 26,
           }),
         ],
       };
@@ -2173,19 +2159,23 @@ function groupLineItems(lineItems: LineItem[]) {
 }
 
 function isSeasonalBoxLineItem(item: LineItem) {
-  const normalizedTags = (item.tags || []).map((tag) => normalizeSearchText(tag));
-  const hasParentBoxTag = normalizedTags.some((tag) =>
-    [
-      "seasonal box",
-      "seasonal-box",
-      "parent box",
-      "box parent",
-      "bundle parent",
-      "parent bundle",
-    ].includes(tag),
+  const normalizedTags = (item.tags || []).map((tag) =>
+    normalizeSearchText(tag)
+      .replace(/&/g, "and")
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim(),
   );
 
-  if (hasParentBoxTag) {
+  const parentBoxTags = new Set([
+    "seasonal box",
+    "parent box",
+    "box parent",
+    "bundle parent",
+    "parent bundle",
+  ]);
+
+  if (normalizedTags.some((tag) => parentBoxTags.has(tag))) {
     return true;
   }
 
@@ -2195,19 +2185,26 @@ function isSeasonalBoxLineItem(item: LineItem) {
     .replace(/\s+/g, " ")
     .trim();
 
-  if (!name.endsWith(" box")) {
-    return false;
-  }
+  const isOrganicFruitAndVegParent =
+    /(?:^|\s)(?:(?:small|medium|large|extra large)\s+)?organic fruit and veg box$/.test(
+      name,
+    );
+
+  const explicitParentBoxSuffixes = [
+    "budget organic box",
+    "ultimate organic farm box",
+    "regen meat box",
+    "organic staples box",
+    "fruit only organic box",
+    "veg only organic box",
+    "seasonal box",
+  ];
 
   return (
-    name.includes("fruit and veg box") ||
-    name.includes("fruit veg box") ||
-    name.includes("organic farm box") ||
-    name.includes("regen meat box") ||
-    name.includes("organic staples box") ||
-    name.includes("fruit only organic box") ||
-    name.includes("veg only organic box") ||
-    name.includes("seasonal box")
+    isOrganicFruitAndVegParent ||
+    explicitParentBoxSuffixes.some(
+      (parentName) => name === parentName || name.endsWith(` ${parentName}`),
+    )
   );
 }
 
@@ -2411,7 +2408,7 @@ function getPageCss(printMode: PrintMode) {
     return `
       @page {
         size: A4 landscape;
-        margin: 10mm;
+        margin: 0;
       }
     `;
   }
@@ -2420,7 +2417,7 @@ function getPageCss(printMode: PrintMode) {
     return `
       @page {
         size: A4 portrait;
-        margin: 10mm 12mm 14mm;
+        margin: 0;
       }
     `;
   }
