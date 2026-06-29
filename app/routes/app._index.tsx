@@ -2139,15 +2139,15 @@ function getWordExportFileName(printMode: PrintMode | "checklist", orders: Order
 }
 
 function groupLineItems(lineItems: LineItem[]) {
-  return lineItems.reduce(
-    (groups, item) => {
+  const groups = lineItems.reduce(
+    (groupedItems, item) => {
       if (isSeasonalBoxLineItem(item)) {
-        return groups;
+        return groupedItems;
       }
 
       const category = getLineItemCategory(item);
-      groups[category].push(item);
-      return groups;
+      groupedItems[category].push(item);
+      return groupedItems;
     },
     {
       fruit: [] as LineItem[],
@@ -2156,6 +2156,34 @@ function groupLineItems(lineItems: LineItem[]) {
       baked: [] as LineItem[],
     },
   );
+
+  return {
+    fruit: sortLineItemsAlphabetically(groups.fruit),
+    grocery: sortLineItemsAlphabetically(groups.grocery),
+    frozen: sortLineItemsAlphabetically(groups.frozen),
+    baked: sortLineItemsAlphabetically(groups.baked),
+  };
+}
+
+function sortLineItemsAlphabetically(items: LineItem[]) {
+  return [...items].sort((firstItem, secondItem) => {
+    const firstName = getLineItemDisplayName(firstItem);
+    const secondName = getLineItemDisplayName(secondItem);
+
+    const nameCompare = firstName.localeCompare(secondName, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+
+    if (nameCompare !== 0) {
+      return nameCompare;
+    }
+
+    return (firstItem.sku || "").localeCompare(secondItem.sku || "", undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+  });
 }
 
 function isSeasonalBoxLineItem(item: LineItem) {
