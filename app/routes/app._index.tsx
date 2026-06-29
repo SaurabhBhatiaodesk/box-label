@@ -2167,8 +2167,8 @@ function groupLineItems(lineItems: LineItem[]) {
 
 function sortLineItemsAlphabetically(items: LineItem[]) {
   return [...items].sort((firstItem, secondItem) => {
-    const firstName = getLineItemDisplayName(firstItem);
-    const secondName = getLineItemDisplayName(secondItem);
+    const firstName = getLineItemSortableName(firstItem);
+    const secondName = getLineItemSortableName(secondItem);
 
     const nameCompare = firstName.localeCompare(secondName, undefined, {
       numeric: true,
@@ -2179,11 +2179,34 @@ function sortLineItemsAlphabetically(items: LineItem[]) {
       return nameCompare;
     }
 
+    const displayNameCompare = getLineItemDisplayName(firstItem).localeCompare(
+      getLineItemDisplayName(secondItem),
+      undefined,
+      {
+        numeric: true,
+        sensitivity: "base",
+      },
+    );
+
+    if (displayNameCompare !== 0) {
+      return displayNameCompare;
+    }
+
     return (firstItem.sku || "").localeCompare(secondItem.sku || "", undefined, {
       numeric: true,
       sensitivity: "base",
     });
   });
+}
+
+function getLineItemSortableName(item: LineItem) {
+  return getLineItemDisplayName(item)
+    .replace(
+      /^\s*(?:\d+(?:\.\d+)?\s*(?:g|gm|gram|grams|kg|ml|l|lt|ltr|litre|litres|liter|liters|oz|lb|lbs|pack|packs|pc|pcs|piece|pieces|x)\b\s*[-–—:]?\s*)+/i,
+      "",
+    )
+    .replace(/^\s*[-–—:]\s*/, "")
+    .trim();
 }
 
 function isSeasonalBoxLineItem(item: LineItem) {
