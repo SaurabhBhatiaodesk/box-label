@@ -1035,6 +1035,7 @@ export default function Index() {
             min-height: auto !important;
             padding: 10mm 12mm 14mm !important;
             box-sizing: border-box !important;
+            font-size: 11pt !important;
             page-break-after: always !important;
             break-after: page !important;
           }
@@ -1058,7 +1059,7 @@ export default function Index() {
 
           .packing-header td {
             border: 1px solid #ccc;
-            padding: 10px;
+            padding: 8px;
             vertical-align: top;
           }
 
@@ -1072,20 +1073,20 @@ export default function Index() {
           }
 
           .packing-name {
-            font-size: 24px;
+            font-size: 14pt;
             font-weight: bold;
           }
 
           .packing-order {
-            font-size: 16px;
+            font-size: 11pt;
             font-weight: normal;
           }
 
           .packing-meta {
-            font-size: 13px;
+            font-size: 11pt;
             font-weight: bold;
-            margin: 10px 0;
-            line-height: 1.5;
+            margin: 8px 0;
+            line-height: 1.35;
           }
 
           .packing-driver-line {
@@ -1093,12 +1094,12 @@ export default function Index() {
           }
 
           .packing-packer {
-            font-size: 15px;
+            font-size: 11pt;
             margin-bottom: 6px;
           }
 
           .packing-instructions {
-            font-size: 13px;
+            font-size: 11pt;
             margin-top: 4px;
           }
 
@@ -1114,40 +1115,62 @@ export default function Index() {
 
           .packing-main td {
             border: 1px solid #000;
-            padding: 8px;
+            padding: 7px;
             vertical-align: top;
           }
 
           .packing-label {
             width: 28%;
-            font-size: 18px;
+            font-size: 11pt;
             font-weight: bold;
           }
 
           .packing-value {
             width: 72%;
-            font-size: 13px;
-            line-height: 1.45;
+            font-size: 11pt;
+            line-height: 1.35;
           }
 
           .packing-value div {
-            margin-bottom: 4px;
+            margin-bottom: 3px;
           }
 
           .packing-note {
-            font-size: 12px;
+            font-size: 10pt;
             font-style: italic;
+            margin-top: 7px;
+            line-height: 1.25;
+          }
+
+          .packing-footer {
+            margin-top: 18px;
+            text-align: center;
+            font-size: 11pt;
+            line-height: 1.25;
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+
+          .packing-footer p {
+            margin: 0 0 12px 0;
+          }
+
+          .packing-footer-good {
             margin-top: 8px;
+          }
+
+          .packing-footer-good strong {
+            display: block;
           }
 
           .packing-bottom {
             text-align: center;
             margin-top: 20px;
-            font-size: 16px;
+            font-size: 11pt;
           }
 
           .packing-big {
-            font-size: 20px;
+            font-size: 11pt;
             font-weight: bold;
           }
 
@@ -1237,6 +1260,15 @@ export default function Index() {
 
           .checklist-item-line {
             margin: 0 0 3px 0;
+          }
+
+          .checklist-group {
+            margin-bottom: 6px;
+          }
+
+          .checklist-group-title {
+            font-weight: 700;
+            margin-bottom: 3px;
           }
         }
       `}</style>
@@ -1581,16 +1613,23 @@ function PackingSlipsPrint({
               <table className="packing-main">
                 <tbody>
                   <tr>
-                    <td className="packing-label">Fruit &amp; Veg</td>
+                    <td className="packing-label">Groceries only</td>
                     <td className="packing-value">
-                      <ItemLines items={groups.fruit} />
+                      <ItemLines items={groups.groceriesOnly} />
                     </td>
                   </tr>
 
                   <tr>
-                    <td className="packing-label">Grocery &amp; Fridge</td>
+                    <td className="packing-label">Produce only</td>
                     <td className="packing-value">
-                      <ItemLines items={groups.grocery} />
+                      <ItemLines items={groups.produceOnly} />
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td className="packing-label">Produce &amp; Groceries</td>
+                    <td className="packing-value">
+                      <ItemLines items={groups.produceAndGroceries} />
                     </td>
                   </tr>
 
@@ -1615,11 +1654,28 @@ function PackingSlipsPrint({
                 </tbody>
               </table>
 
+              <PackingSlipFooter />
             </div>
           </div>
         );
       })}
     </>
+  );
+}
+
+function PackingSlipFooter() {
+  return (
+    <div className="packing-footer">
+      <p>
+        Your box might look overpacked — that’s just to make sure it arrives happy. All packing is
+        reused and recyclable, keeping the planet happy too. <strong>Need help?</strong> Text us on {SUPPORT_PHONE}.
+      </p>
+
+      <div className="packing-footer-good">
+        <div>You just did something good for local farmers.</div>
+        <strong>Not bad for a Wednesday.</strong>
+      </div>
+    </div>
   );
 }
 
@@ -1657,12 +1713,11 @@ function ChecklistPrint({ orders }: { orders: Order[] }) {
               <tr key={order.id}>
                 <td>
                   <div className="checklist-customer-name">{order.customerName || "Customer Name"}</div>
-                  <div className="checklist-order-name">{order.name}</div>
                 </td>
                 <td>{formatDriverPickupDetails(order)}</td>
                 <td>{formatBoxPreferencePackingInstructions(order)}</td>
                 <td>
-                  <ChecklistItemLines items={groups.grocery} showSku />
+                  <ChecklistGroupedItemLines groups={groups} showSku />
                 </td>
                 <td>
                   <ChecklistItemLines items={groups.frozen} showSku />
@@ -1714,6 +1769,33 @@ function ChecklistItemLines({
           </div>
         );
       })}
+    </>
+  );
+}
+
+function ChecklistGroupedItemLines({
+  groups,
+  showSku = false,
+}: {
+  groups: ReturnType<typeof groupLineItems>;
+  showSku?: boolean;
+}) {
+  const groupedSections = [
+    { label: "Groceries only", items: groups.groceriesOnly },
+    { label: "Produce only", items: groups.produceOnly },
+    { label: "Produce & Groceries", items: groups.produceAndGroceries },
+  ].filter((section) => section.items.length > 0);
+
+  if (groupedSections.length === 0) return null;
+
+  return (
+    <>
+      {groupedSections.map((section) => (
+        <div className="checklist-group" key={section.label}>
+          <div className="checklist-group-title">{section.label}</div>
+          <ChecklistItemLines items={section.items} showSku={showSku} />
+        </div>
+      ))}
     </>
   );
 }
@@ -1837,12 +1919,14 @@ function createPackingSlipsWordDocument(
               type: docx.WidthType.PERCENTAGE,
             },
             rows: [
-              createWordTwoColumnRow(docx, "Fruit & Veg", groups.fruit.map(formatLineItem)),
-              createWordTwoColumnRow(docx, "Grocery & Fridge", groups.grocery.map(formatLineItem)),
+              createWordTwoColumnRow(docx, "Groceries only", groups.groceriesOnly.map(formatLineItem)),
+              createWordTwoColumnRow(docx, "Produce only", groups.produceOnly.map(formatLineItem)),
+              createWordTwoColumnRow(docx, "Produce & Groceries", groups.produceAndGroceries.map(formatLineItem)),
               createWordTwoColumnRow(docx, "Frozen", groups.frozen.map(formatLineItem)),
               createWordTwoColumnRow(docx, "Fresh Baked", groups.baked.map(formatLineItem)),
             ],
           }),
+          ...createWordPackingFooter(docx),
         ],
       };
     }),
@@ -1913,7 +1997,7 @@ function createChecklistWordDocument(
                 return new docx.TableRow({
                   cantSplit: true,
                   children: [
-                    createWordCell(docx, [order.customerName || "Customer Name", order.name], {
+                    createWordCell(docx, [order.customerName || "Customer Name"], {
                       width: 14,
                     }),
                     createWordCell(docx, splitWordLines(formatDriverPickupDetails(order)), {
@@ -1924,7 +2008,7 @@ function createChecklistWordDocument(
                       splitWordLines(formatBoxPreferencePackingInstructions(order)),
                       { width: 18 },
                     ),
-                    createWordChecklistItemsCell(docx, groups.grocery, { width: 18 }),
+                    createWordChecklistGroupedItemsCell(docx, groups, { width: 18 }),
                     createWordChecklistItemsCell(docx, groups.frozen, { width: 18 }),
                     createWordChecklistItemsCell(docx, groups.baked, { width: 18 }),
                   ],
@@ -2007,33 +2091,117 @@ function createWordChecklistItemsCell(
     },
     children:
       items.length > 0
-        ? items.map((item) => {
-            const quantity = getLineItemQuantity(item);
-            const title = getLineItemDisplayName(item);
-            const sku = item.sku?.trim();
-            const details = sku ? `${sku} - ${title}` : title;
-
-            return new docx.Paragraph({
-              spacing: {
-                after: 40,
-              },
-              children: [
-                new docx.TextRun({
-                  text: `[${quantity}]`,
-                  bold: true,
-                  size: 18,
-                  font: "Calibri",
-                }),
-                new docx.TextRun({
-                  text: ` ${details}`,
-                  size: 18,
-                  font: "Calibri",
-                }),
-              ],
-            });
-          })
+        ? createWordChecklistItemParagraphs(docx, items)
         : [createWordParagraph(docx, "", { size: 18 })],
   });
+}
+
+function createWordChecklistGroupedItemsCell(
+  docx: any,
+  groups: ReturnType<typeof groupLineItems>,
+  options: {
+    width?: number;
+  } = {},
+) {
+  const sections = [
+    { label: "Groceries only", items: groups.groceriesOnly },
+    { label: "Produce only", items: groups.produceOnly },
+    { label: "Produce & Groceries", items: groups.produceAndGroceries },
+  ].filter((section) => section.items.length > 0);
+
+  const children = sections.flatMap((section) => [
+    createWordParagraph(docx, section.label, {
+      bold: true,
+      size: 18,
+      spacingAfter: 40,
+    }),
+    ...createWordChecklistItemParagraphs(docx, section.items),
+  ]);
+
+  return new docx.TableCell({
+    width: options.width
+      ? {
+          size: options.width,
+          type: docx.WidthType.PERCENTAGE,
+        }
+      : undefined,
+    margins: {
+      top: 90,
+      right: 90,
+      bottom: 90,
+      left: 90,
+    },
+    children: children.length > 0 ? children : [createWordParagraph(docx, "", { size: 18 })],
+  });
+}
+
+function createWordChecklistItemParagraphs(docx: any, items: LineItem[]) {
+  return items.map((item) => {
+    const quantity = getLineItemQuantity(item);
+    const title = getLineItemDisplayName(item);
+    const sku = item.sku?.trim();
+    const details = sku ? `${sku} - ${title}` : title;
+
+    return new docx.Paragraph({
+      spacing: {
+        after: 40,
+      },
+      children: [
+        new docx.TextRun({
+          text: `[${quantity}]`,
+          bold: true,
+          size: 18,
+          font: "Calibri",
+        }),
+        new docx.TextRun({
+          text: ` ${details}`,
+          size: 18,
+          font: "Calibri",
+        }),
+      ],
+    });
+  });
+}
+
+function createWordPackingFooter(docx: any) {
+  return [
+    new docx.Paragraph({
+      alignment: docx.AlignmentType.CENTER,
+      spacing: {
+        before: 260,
+        after: 160,
+      },
+      children: [
+        new docx.TextRun({
+          text: "Your box might look overpacked — that’s just to make sure it arrives happy. All packing is reused and recyclable, keeping the planet happy too. ",
+          size: 22,
+          font: "Calibri",
+        }),
+        new docx.TextRun({
+          text: "Need help?",
+          bold: true,
+          size: 22,
+          font: "Calibri",
+        }),
+        new docx.TextRun({
+          text: ` Text us on ${SUPPORT_PHONE}.`,
+          size: 22,
+          font: "Calibri",
+        }),
+      ],
+    }),
+    createWordParagraph(docx, "You just did something good for local farmers.", {
+      alignment: "center",
+      size: 22,
+      spacingAfter: 30,
+    }),
+    createWordParagraph(docx, "Not bad for a Wednesday.", {
+      alignment: "center",
+      bold: true,
+      size: 22,
+      spacingAfter: 0,
+    }),
+  ];
 }
 
 function createWordTwoColumnRow(docx: any, label: string, lines: string[]) {
@@ -2150,18 +2318,28 @@ function groupLineItems(lineItems: LineItem[]) {
       return groupedItems;
     },
     {
-      fruit: [] as LineItem[],
-      grocery: [] as LineItem[],
+      groceriesOnly: [] as LineItem[],
+      produceOnly: [] as LineItem[],
+      produceAndGroceries: [] as LineItem[],
       frozen: [] as LineItem[],
       baked: [] as LineItem[],
     },
   );
 
+  const groceriesOnly = sortLineItemsAlphabetically(groups.groceriesOnly);
+  const produceOnly = sortLineItemsAlphabetically(groups.produceOnly);
+  const produceAndGroceries = sortLineItemsAlphabetically(groups.produceAndGroceries);
+  const frozen = sortLineItemsAlphabetically(groups.frozen);
+  const baked = sortLineItemsAlphabetically(groups.baked);
+
   return {
-    fruit: sortLineItemsAlphabetically(groups.fruit),
-    grocery: sortLineItemsAlphabetically(groups.grocery),
-    frozen: sortLineItemsAlphabetically(groups.frozen),
-    baked: sortLineItemsAlphabetically(groups.baked),
+    groceriesOnly,
+    produceOnly,
+    produceAndGroceries,
+    frozen,
+    baked,
+    fruit: produceOnly,
+    grocery: [...groceriesOnly, ...produceOnly, ...produceAndGroceries],
   };
 }
 
@@ -2248,6 +2426,8 @@ function isSeasonalBoxLineItem(item: LineItem) {
     "organic staples box",
     "fruit only organic box",
     "veg only organic box",
+    "big organic harvest box",
+    "organic harvest box",
     "seasonal box",
   ];
 
@@ -2259,22 +2439,49 @@ function isSeasonalBoxLineItem(item: LineItem) {
   );
 }
 
-function getLineItemCategory(item: LineItem): "fruit" | "grocery" | "frozen" | "baked" {
+function getLineItemCategory(
+  item: LineItem,
+): "groceriesOnly" | "produceOnly" | "produceAndGroceries" | "frozen" | "baked" {
   const productType = normalizeProductType(item.productType);
+  const categoryText = normalizeProductType(
+    [
+      item.productType,
+      item.variantTitle,
+      item.title,
+      item.productName,
+      ...(item.tags || []),
+    ].join(" "),
+  );
 
-  if (productType === "fruit and veg") {
-    return "fruit";
-  }
-
-  if (productType === "frozen") {
+  if (productType === "frozen" || categoryText.includes(" frozen ") || categoryText.endsWith(" frozen")) {
     return "frozen";
   }
 
-  if (productType === "bakery" || productType === "fresh baked") {
+  if (productType === "bakery" || productType === "fresh baked" || categoryText.includes("fresh baked")) {
     return "baked";
   }
 
-  return "grocery";
+  if (
+    categoryText.includes("produce and groceries") ||
+    categoryText.includes("groceries and produce") ||
+    categoryText.includes("produce groceries") ||
+    categoryText.includes("groceries produce")
+  ) {
+    return "produceAndGroceries";
+  }
+
+  if (
+    productType === "fruit and veg" ||
+    productType === "fruit and vegetables" ||
+    productType === "produce" ||
+    categoryText.includes("produce only") ||
+    categoryText.includes("fruit and veg") ||
+    categoryText.includes("fruit and vegetables")
+  ) {
+    return "produceOnly";
+  }
+
+  return "groceriesOnly";
 }
 
 function normalizeProductType(value: string) {
@@ -2341,11 +2548,7 @@ function isCourierOrder(order: Order) {
 }
 
 function formatDriverPickupDetails(order: Order) {
-  return [
-    order.driverName ? `Driver: ${order.driverName}` : "",
-    order.pickupDetails,
-    order.pickupLocationCompany,
-  ]
+  return [order.driverName, order.pickupDetails, order.pickupLocationCompany]
     .filter(Boolean)
     .join("\n");
 }
