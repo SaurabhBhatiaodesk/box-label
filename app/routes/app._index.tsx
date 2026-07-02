@@ -257,6 +257,12 @@ export const loader = async ({ request }: { request: Request }) => {
         "delivery_location",
         "deliveryLocation",
         "delivery-location",
+        "Delivery Zone",
+        "delivery_zone",
+        "deliveryZone",
+        "delivery-zone",
+        "Zone",
+        "zone",
       ]);
 
       const pickupLocationId = getOrderValue(order, "Pickup-Location-Id", [
@@ -330,6 +336,15 @@ export const loader = async ({ request }: { request: Request }) => {
         "easyRoutesRoute",
         "easyroutesRoute",
         "easy-routes-route",
+        "EasyRoutes Route Name",
+        "easyroutes_route_name",
+        "easyRoutesRouteName",
+        "easy-routes-route-name",
+        "Route",
+        "route",
+        "Route Name",
+        "route_name",
+        "routeName",
       ]);
 
       const easyRoutesStopNumber = getOrderValue(order, "EasyRoutes Stop Number", [
@@ -357,6 +372,16 @@ export const loader = async ({ request }: { request: Request }) => {
       const easyRoutesDriverName = getOrderValue(order, "EasyRoutes Driver", [
         "EasyRoutes Driver",
         "easyroutes driver",
+        "EasyRoutes Driver Name",
+        "easyroutes_driver",
+        "easyroutesDriver",
+        "easy-routes-driver",
+        "Route Driver",
+        "route_driver",
+        "routeDriver",
+        "Delivery Driver",
+        "delivery_driver",
+        "deliveryDriver",
         "Driver",
         "driver",
         "Driver Name",
@@ -1559,6 +1584,7 @@ function LabelsPrint({
 
 function PackingSlipsPrint({
   orders,
+  type,
 }: {
   orders: Order[];
   type: "Local Orders" | "Courier Orders";
@@ -1569,6 +1595,7 @@ function PackingSlipsPrint({
         const groups = groupLineItems(order.lineItems);
         const packingInstructionsText = formatBoxPreferencePackingInstructions(order);
         const packingInstructionsLabel = getBoxPreferencePackingInstructionsLabel(order);
+        const packingRouteDriverDateText = formatPackingSlipRouteDriverDate(order);
 
         return (
           <div className="packing-page" key={order.id}>
@@ -1583,10 +1610,8 @@ function PackingSlipsPrint({
                       </div>
 
                       <div className="packing-meta">
-                        {order.easyRoutesRoute ? (
-                          <div className="packing-driver-line">{order.easyRoutesRoute}</div>
-                        ) : order.driverName ? (
-                          <div className="packing-driver-line">{order.driverName}</div>
+                        {packingRouteDriverDateText ? (
+                          <div className="packing-driver-line">{packingRouteDriverDateText}</div>
                         ) : null}
                       </div>
 
@@ -1654,7 +1679,7 @@ function PackingSlipsPrint({
                 </tbody>
               </table>
 
-              <PackingSlipFooter />
+              <PackingSlipFooter type={type} />
             </div>
           </div>
         );
@@ -1663,17 +1688,27 @@ function PackingSlipsPrint({
   );
 }
 
-function PackingSlipFooter() {
+function PackingSlipFooter({
+  type,
+}: {
+  type: "Local Orders" | "Courier Orders";
+}) {
+  const footerContent = getPackingSlipFooterContent(type);
+
   return (
     <div className="packing-footer">
       <p>
-        Your box might look overpacked — that’s just to make sure it arrives happy. All packing is
-        reused and recyclable, keeping the planet happy too. <strong>Need help?</strong> Text us on {SUPPORT_PHONE}.
+        <strong>{footerContent.heading}</strong>
+      </p>
+
+      <p>{footerContent.body}</p>
+
+      <p>
+        <strong>Need help?</strong> Text us on {SUPPORT_PHONE}.
       </p>
 
       <div className="packing-footer-good">
-        <div>You just did something good for local farmers.</div>
-        <strong>Not bad for a Wednesday.</strong>
+        <strong>{footerContent.closing}</strong>
       </div>
     </div>
   );
@@ -1830,6 +1865,22 @@ function formatChecklistLineItem(item: LineItem) {
   return `[${quantity}] ${sku} - ${title}`;
 }
 
+function getPackingSlipFooterContent(type: "Local Orders" | "Courier Orders") {
+  if (type === "Courier Orders") {
+    return {
+      heading: "Courier Orders",
+      body: "Your box might look a little overpacked, but that’s just to protect your goodies! Wherever possible, our packaging is recycled, reused or recyclable. Please reuse or recycle it if you can.",
+      closing: "You just supported local farmers and made a kinder choice for the planet. 💚",
+    };
+  }
+
+  return {
+    heading: "Local Delivery",
+    body: "Please leave your empty box out for collection with your next delivery. We also happily reuse clean plastic bottles as ice packs. Thanks for helping us reduce waste.",
+    closing: "You just supported local farmers and made a kinder choice for the planet. 💚",
+  };
+}
+
 async function exportSelectedOrdersToWord(orders: Order[], printMode: PrintMode) {
   const docx = await import("docx");
   const { saveAs } = await import("file-saver");
@@ -1842,7 +1893,10 @@ async function exportSelectedOrdersToWord(orders: Order[], printMode: PrintMode)
     return;
   }
 
-  const document = createPackingSlipsWordDocument(docx, orders, logoData);
+  const packingSlipType =
+    printMode === "courierPackingSlip" ? "Courier Orders" : "Local Orders";
+
+  const document = createPackingSlipsWordDocument(docx, orders, logoData, packingSlipType);
   const blob = await docx.Packer.toBlob(document);
   saveAs(blob, getWordExportFileName(printMode, orders));
 }
@@ -1863,11 +1917,13 @@ function createPackingSlipsWordDocument(
   docx: any,
   orders: Order[],
   logoData: Uint8Array,
+  type: "Local Orders" | "Courier Orders",
 ) {
   return new docx.Document({
     styles: getWordStyles(),
     sections: orders.map((order) => {
       const groups = groupLineItems(order.lineItems);
+      const packingRouteDriverDateText = formatPackingSlipRouteDriverDate(order);
 
       return {
         properties: {
@@ -1891,7 +1947,7 @@ function createPackingSlipsWordDocument(
             size: 32,
             spacingAfter: 120,
           }),
-          createWordParagraph(docx, order.easyRoutesRoute || order.driverName || "", {
+          createWordParagraph(docx, packingRouteDriverDateText, {
             bold: true,
             size: 20,
             spacingAfter: 120,
@@ -1926,7 +1982,7 @@ function createPackingSlipsWordDocument(
               createWordTwoColumnRow(docx, "Fresh Baked", groups.baked.map(formatLineItem)),
             ],
           }),
-          ...createWordPackingFooter(docx),
+          ...createWordPackingFooter(docx, type),
         ],
       };
     }),
@@ -2163,20 +2219,31 @@ function createWordChecklistItemParagraphs(docx: any, items: LineItem[]) {
   });
 }
 
-function createWordPackingFooter(docx: any) {
+function createWordPackingFooter(
+  docx: any,
+  type: "Local Orders" | "Courier Orders",
+) {
+  const footerContent = getPackingSlipFooterContent(type);
+
   return [
+    createWordParagraph(docx, footerContent.heading, {
+      alignment: "center",
+      bold: true,
+      size: 24,
+      spacingBefore: 260,
+      spacingAfter: 120,
+    }),
+    createWordParagraph(docx, footerContent.body, {
+      alignment: "center",
+      size: 22,
+      spacingAfter: 120,
+    }),
     new docx.Paragraph({
       alignment: docx.AlignmentType.CENTER,
       spacing: {
-        before: 260,
-        after: 160,
+        after: 120,
       },
       children: [
-        new docx.TextRun({
-          text: "Your box might look overpacked — that’s just to make sure it arrives happy. All packing is reused and recyclable, keeping the planet happy too. ",
-          size: 22,
-          font: "Calibri",
-        }),
         new docx.TextRun({
           text: "Need help?",
           bold: true,
@@ -2190,12 +2257,7 @@ function createWordPackingFooter(docx: any) {
         }),
       ],
     }),
-    createWordParagraph(docx, "You just did something good for local farmers.", {
-      alignment: "center",
-      size: 22,
-      spacingAfter: 30,
-    }),
-    createWordParagraph(docx, "Not bad for a Wednesday.", {
+    createWordParagraph(docx, footerContent.closing, {
       alignment: "center",
       bold: true,
       size: 22,
@@ -2545,6 +2607,24 @@ function getAllowedBoxPreference(value: string) {
 
 function isCourierOrder(order: Order) {
   return normalizeSearchText(order.easyRoutesRoute).includes("courier");
+}
+
+function formatPackingSlipRouteDriverDate(order: Order) {
+  const easyRoutesRoute = order.easyRoutesRoute?.trim();
+
+  if (easyRoutesRoute) {
+    return easyRoutesRoute;
+  }
+
+  const deliveryLocation = order.deliveryLocation?.trim();
+  const driverName = order.driverName?.trim();
+  const deliveryDate = order.deliveryDate?.trim();
+
+  if (deliveryLocation || driverName) {
+    return [deliveryLocation, driverName, deliveryDate].filter(Boolean).join(" - ");
+  }
+
+  return "";
 }
 
 function formatDriverPickupDetails(order: Order) {
