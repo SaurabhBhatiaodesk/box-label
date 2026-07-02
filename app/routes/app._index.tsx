@@ -1638,23 +1638,16 @@ function PackingSlipsPrint({
               <table className="packing-main">
                 <tbody>
                   <tr>
-                    <td className="packing-label">Groceries only</td>
+                    <td className="packing-label">Produce</td>
+                    <td className="packing-value">
+                      <ItemLines items={[...groups.produceOnly, ...groups.produceAndGroceries]} />
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td className="packing-label">Groceries</td>
                     <td className="packing-value">
                       <ItemLines items={groups.groceriesOnly} />
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="packing-label">Produce only</td>
-                    <td className="packing-value">
-                      <ItemLines items={groups.produceOnly} />
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="packing-label">Produce &amp; Groceries</td>
-                    <td className="packing-value">
-                      <ItemLines items={groups.produceAndGroceries} />
                     </td>
                   </tr>
 
@@ -1971,9 +1964,12 @@ function createPackingSlipsWordDocument(
               type: docx.WidthType.PERCENTAGE,
             },
             rows: [
-              createWordTwoColumnRow(docx, "Groceries only", groups.groceriesOnly.map(formatLineItem)),
-              createWordTwoColumnRow(docx, "Produce only", groups.produceOnly.map(formatLineItem)),
-              createWordTwoColumnRow(docx, "Produce & Groceries", groups.produceAndGroceries.map(formatLineItem)),
+              createWordTwoColumnRow(
+                docx,
+                "Produce",
+                [...groups.produceOnly, ...groups.produceAndGroceries].map(formatLineItem),
+              ),
+              createWordTwoColumnRow(docx, "Groceries", groups.groceriesOnly.map(formatLineItem)),
               createWordTwoColumnRow(docx, "Frozen", groups.frozen.map(formatLineItem)),
               createWordTwoColumnRow(docx, "Fresh Baked", groups.baked.map(formatLineItem)),
             ],
