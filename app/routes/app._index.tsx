@@ -1697,10 +1697,6 @@ function PackingSlipFooter({
 
   return (
     <div className="packing-footer">
-      <p>
-        <strong>{footerContent.heading}</strong>
-      </p>
-
       <p>{footerContent.body}</p>
 
       <p>
@@ -2226,16 +2222,10 @@ function createWordPackingFooter(
   const footerContent = getPackingSlipFooterContent(type);
 
   return [
-    createWordParagraph(docx, footerContent.heading, {
-      alignment: "center",
-      bold: true,
-      size: 24,
-      spacingBefore: 260,
-      spacingAfter: 120,
-    }),
     createWordParagraph(docx, footerContent.body, {
       alignment: "center",
       size: 22,
+      spacingBefore: 260,
       spacingAfter: 120,
     }),
     new docx.Paragraph({
