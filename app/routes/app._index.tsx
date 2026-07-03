@@ -532,7 +532,9 @@ export default function Index() {
   }, [filteredOrders, ordersLimit]);
 
   const selectedOrders = useMemo(() => {
-    return visibleOrders.filter((order) => selectedIds.includes(order.id));
+    return sortOrdersForPackingAndLabels(
+      visibleOrders.filter((order) => selectedIds.includes(order.id)),
+    );
   }, [visibleOrders, selectedIds]);
 
   const ordersWithDriver = useMemo(() => {
@@ -2629,6 +2631,47 @@ function getChecklistDeliveryDateLabel(orders: Order[]) {
   );
 
   return dates.join(", ");
+}
+
+function sortOrdersForPackingAndLabels(orders: Order[]) {
+  return [...orders].sort((firstOrder, secondOrder) => {
+    const firstGroup = getPackingOrderGroup(firstOrder);
+    const secondGroup = getPackingOrderGroup(secondOrder);
+
+    if (firstGroup !== secondGroup) {
+      return firstGroup - secondGroup;
+    }
+
+    const firstCustomerName = normalizeSearchText(firstOrder.customerName || firstOrder.name);
+    const secondCustomerName = normalizeSearchText(secondOrder.customerName || secondOrder.name);
+
+    return firstCustomerName.localeCompare(secondCustomerName, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+  });
+}
+
+function getPackingOrderGroup(order: Order) {
+  const groups = groupLineItems(order.lineItems);
+
+  const hasProduce =
+    groups.produceOnly.length > 0 || groups.produceAndGroceries.length > 0;
+
+  const hasGroceryFrozenOrBaked =
+    groups.groceriesOnly.length > 0 ||
+    groups.frozen.length > 0 ||
+    groups.baked.length > 0;
+
+  if (!hasProduce) {
+    return 1;
+  }
+
+  if (hasProduce && !hasGroceryFrozenOrBaked) {
+    return 2;
+  }
+
+  return 3;
 }
 
 function parseDriverFromEasyRoutesRoute(route: string) {
