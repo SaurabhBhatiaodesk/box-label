@@ -6,7 +6,7 @@ const LOGO_URL =
   "https://cdn.shopify.com/s/files/1/0483/3758/4295/files/Untitled_3508_x_700_px.jpg?v=1779782616";
 
 const SUPPORT_PHONE = "0480 079 218";
-const ORDERS_FETCH_LIMIT = 1000;
+const ORDERS_FETCH_LIMIT = 100;
 
 type PrintMode =
   | "labels"
