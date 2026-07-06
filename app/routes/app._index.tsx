@@ -6,7 +6,8 @@ const LOGO_URL =
   "https://cdn.shopify.com/s/files/1/0483/3758/4295/files/Untitled_3508_x_700_px.jpg?v=1779782616";
 
 const SUPPORT_PHONE = "0480 079 218";
-const ORDERS_FETCH_LIMIT = 100;
+const ORDERS_FETCH_LIMIT = 1000;
+const ORDERS_PAGE_SIZE = 100;
 
 type PrintMode =
   | "labels"
@@ -84,12 +85,12 @@ export const loader = async ({ request }: { request: Request }) => {
   let cursor: string | null = null;
 
   while (hasNextPage && allEdges.length < ORDERS_FETCH_LIMIT) {
-    const first = Math.min(250, ORDERS_FETCH_LIMIT - allEdges.length);
+    const first = Math.min(ORDERS_PAGE_SIZE, ORDERS_FETCH_LIMIT - allEdges.length);
 
     const response = await admin.graphql(
       `#graphql
         query GetOrders($first: Int!, $after: String) {
-          orders(first: $first, after: $after, sortKey: CREATED_AT, reverse: true) {
+          orders(first: $first, after: $after, sortKey: CREATED_AT, reverse: true, query: "status:any") {
             edges {
               cursor
               node {
@@ -2682,11 +2683,22 @@ function parseDriverFromEasyRoutesRoute(route: string) {
     .map((part) => part.trim())
     .filter(Boolean);
 
-  if (parts.length >= 2) {
-    return parts[1];
+  if (parts.length < 2) {
+    return "";
   }
 
-  return "";
+  const possibleDriver = parts[1];
+  const normalizedPossibleDriver = normalizeSearchText(possibleDriver);
+
+  const looksLikeDate =
+    /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(possibleDriver) ||
+    /^\d{4}-\d{2}-\d{2}/.test(possibleDriver);
+
+  if (looksLikeDate || normalizedPossibleDriver.includes("courier")) {
+    return "";
+  }
+
+  return possibleDriver;
 }
 
 function getOrderValue(
