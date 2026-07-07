@@ -1807,24 +1807,51 @@ function ChecklistGroupedItemLines({
   groups: ReturnType<typeof groupLineItems>;
   showSku?: boolean;
 }) {
-  const groupedSections = [
-    { label: "Groceries only", items: groups.groceriesOnly },
-    { label: "Produce only", items: groups.produceOnly },
-    { label: "Produce & Groceries", items: groups.produceAndGroceries },
-  ].filter((section) => section.items.length > 0);
+  const checklistGroceries = getChecklistGroceryLineItems(groups);
 
-  if (groupedSections.length === 0) return null;
+  return <ChecklistItemLines items={checklistGroceries} showSku={showSku} />;
+}
 
-  return (
-    <>
-      {groupedSections.map((section) => (
-        <div className="checklist-group" key={section.label}>
-          <div className="checklist-group-title">{section.label}</div>
-          <ChecklistItemLines items={section.items} showSku={showSku} />
-        </div>
-      ))}
-    </>
+function getChecklistGroceryLineItems(groups: ReturnType<typeof groupLineItems>) {
+  return sortLineItemsAlphabetically(
+    [...groups.groceriesOnly, ...groups.produceAndGroceries].filter(
+      (item) => !isChecklistExcludedProduceItem(item),
+    ),
   );
+}
+
+function isChecklistExcludedProduceItem(item: LineItem) {
+  const productType = normalizeProductType(item.productType);
+
+  const itemText = normalizeProductType(
+    [
+      item.productType,
+      item.variantTitle,
+      item.title,
+      item.productName,
+      ...(item.tags || []),
+    ].join(" "),
+  );
+
+  const itemNameText = normalizeProductType([item.title, item.productName].join(" "));
+
+  if (itemNameText.includes("sandy creek gourmet produce")) {
+    return true;
+  }
+
+  if (
+    productType === "produce" ||
+    productType === "fruit and veg" ||
+    productType === "fruit and vegetables"
+  ) {
+    return true;
+  }
+
+  if (itemText.includes("produce only")) {
+    return true;
+  }
+
+  return false;
 }
 
 function getLineItemQuantity(item: LineItem) {
@@ -2154,36 +2181,9 @@ function createWordChecklistGroupedItemsCell(
     width?: number;
   } = {},
 ) {
-  const sections = [
-    { label: "Groceries only", items: groups.groceriesOnly },
-    { label: "Produce only", items: groups.produceOnly },
-    { label: "Produce & Groceries", items: groups.produceAndGroceries },
-  ].filter((section) => section.items.length > 0);
+  const checklistGroceries = getChecklistGroceryLineItems(groups);
 
-  const children = sections.flatMap((section) => [
-    createWordParagraph(docx, section.label, {
-      bold: true,
-      size: 18,
-      spacingAfter: 40,
-    }),
-    ...createWordChecklistItemParagraphs(docx, section.items),
-  ]);
-
-  return new docx.TableCell({
-    width: options.width
-      ? {
-          size: options.width,
-          type: docx.WidthType.PERCENTAGE,
-        }
-      : undefined,
-    margins: {
-      top: 90,
-      right: 90,
-      bottom: 90,
-      left: 90,
-    },
-    children: children.length > 0 ? children : [createWordParagraph(docx, "", { size: 18 })],
-  });
+  return createWordChecklistItemsCell(docx, checklistGroceries, options);
 }
 
 function createWordChecklistItemParagraphs(docx: any, items: LineItem[]) {
@@ -2796,6 +2796,7 @@ function getPageCss(printMode: PrintMode) {
       }
     `;
   }
+// page size for box labels is set in the CSS file (box-labels.css) to ensure proper scaling and layout for printing.
 
   return `
     @page {
@@ -2803,4 +2804,4 @@ function getPageCss(printMode: PrintMode) {
       margin: 0;
     }
   `;
-}
+} 
