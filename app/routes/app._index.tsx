@@ -1707,7 +1707,8 @@ function PackingSlipFooter({
 }
 
 function ChecklistPrint({ orders }: { orders: Order[] }) {
-  const deliveryDateLabel = getChecklistDeliveryDateLabel(orders);
+  const checklistOrders = getChecklistVisibleOrders(orders);
+  const deliveryDateLabel = getChecklistDeliveryDateLabel(checklistOrders);
 
   return (
     <div className="checklist-page">
@@ -1733,8 +1734,9 @@ function ChecklistPrint({ orders }: { orders: Order[] }) {
         </thead>
 
         <tbody>
-          {orders.map((order) => {
+          {checklistOrders.map((order) => {
             const groups = groupLineItems(order.lineItems);
+            const checklistGroups = getChecklistLineItemGroups(groups);
 
             return (
               <tr key={order.id}>
@@ -1744,13 +1746,13 @@ function ChecklistPrint({ orders }: { orders: Order[] }) {
                 <td>{formatDriverPickupDetails(order)}</td>
                 <td>{formatBoxPreferencePackingInstructions(order)}</td>
                 <td>
-                  <ChecklistGroupedItemLines groups={groups} showSku />
+                  <ChecklistItemLines items={checklistGroups.groceries} showSku />
                 </td>
                 <td>
-                  <ChecklistItemLines items={groups.frozen} showSku />
+                  <ChecklistItemLines items={checklistGroups.frozen} showSku />
                 </td>
                 <td>
-                  <ChecklistItemLines items={groups.baked} showSku />
+                  <ChecklistItemLines items={checklistGroups.baked} showSku />
                 </td>
               </tr>
             );
@@ -1812,11 +1814,50 @@ function ChecklistGroupedItemLines({
   return <ChecklistItemLines items={checklistGroceries} showSku={showSku} />;
 }
 
+function getChecklistVisibleOrders(orders: Order[]) {
+  return orders.filter((order) => {
+    const groups = groupLineItems(order.lineItems);
+    return hasChecklistVisibleItems(groups);
+  });
+}
+
+function hasChecklistVisibleItems(groups: ReturnType<typeof groupLineItems>) {
+  const checklistGroups = getChecklistLineItemGroups(groups);
+
+  return (
+    checklistGroups.groceries.length > 0 ||
+    checklistGroups.frozen.length > 0 ||
+    checklistGroups.baked.length > 0
+  );
+}
+
+function getChecklistLineItemGroups(groups: ReturnType<typeof groupLineItems>) {
+  return {
+    groceries: getChecklistGroceryLineItems(groups),
+    frozen: getChecklistFrozenLineItems(groups),
+    baked: getChecklistBakedLineItems(groups),
+  };
+}
+
 function getChecklistGroceryLineItems(groups: ReturnType<typeof groupLineItems>) {
   return sortLineItemsAlphabetically(
     [...groups.groceriesOnly, ...groups.produceAndGroceries].filter(
-      (item) => !isChecklistExcludedProduceItem(item),
+      (item) =>
+        !isChecklistExcludedProduceItem(item) &&
+        !isChecklistExcludedParentItem(item),
     ),
+  );
+}
+
+function getChecklistFrozenLineItems(groups: ReturnType<typeof groupLineItems>) {
+  return sortLineItemsAlphabetically(
+    groups.frozen.filter((item) => !isChecklistExcludedParentItem(item)),
+  );
+}
+
+function getChecklistBakedLineItems(groups: ReturnType<typeof groupLineItems>) {
+  return sortLineItemsAlphabetically(
+    groups.baked.filter((item) => !isChecklistExcludedParentItem(item)),
   );
 }
 
@@ -1852,6 +1893,23 @@ function isChecklistExcludedProduceItem(item: LineItem) {
   }
 
   return false;
+}
+
+function isChecklistExcludedParentItem(item: LineItem) {
+  const itemNameText = normalizeProductType([item.title, item.productName].join(" "));
+
+  if (itemNameText.includes("meal kit")) {
+    return true;
+  }
+
+  const excludedParentNames = [
+    "grass fed meat and seafood box",
+    "wild caught salmon box",
+    "wild caught fish box",
+    "weeknight organic dinners box",
+  ];
+
+  return excludedParentNames.some((parentName) => itemNameText.includes(parentName));
 }
 
 function getLineItemQuantity(item: LineItem) {
@@ -2016,7 +2074,8 @@ function createChecklistWordDocument(
   orders: Order[],
   logoData: Uint8Array,
 ) {
-  const deliveryDateLabel = getChecklistDeliveryDateLabel(orders);
+  const checklistOrders = getChecklistVisibleOrders(orders);
+  const deliveryDateLabel = getChecklistDeliveryDateLabel(checklistOrders);
 
   return new docx.Document({
     styles: getWordStyles(),
@@ -2069,8 +2128,9 @@ function createChecklistWordDocument(
                   createWordCell(docx, ["Fresh Baked"], { bold: true, width: 18 }),
                 ],
               }),
-              ...orders.map((order) => {
+              ...checklistOrders.map((order) => {
                 const groups = groupLineItems(order.lineItems);
+                const checklistGroups = getChecklistLineItemGroups(groups);
 
                 return new docx.TableRow({
                   cantSplit: true,
@@ -2086,9 +2146,9 @@ function createChecklistWordDocument(
                       splitWordLines(formatBoxPreferencePackingInstructions(order)),
                       { width: 18 },
                     ),
-                    createWordChecklistGroupedItemsCell(docx, groups, { width: 18 }),
-                    createWordChecklistItemsCell(docx, groups.frozen, { width: 18 }),
-                    createWordChecklistItemsCell(docx, groups.baked, { width: 18 }),
+                    createWordChecklistItemsCell(docx, checklistGroups.groceries, { width: 18 }),
+                    createWordChecklistItemsCell(docx, checklistGroups.frozen, { width: 18 }),
+                    createWordChecklistItemsCell(docx, checklistGroups.baked, { width: 18 }),
                   ],
                 });
               }),
