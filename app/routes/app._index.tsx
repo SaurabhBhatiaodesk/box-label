@@ -6,6 +6,7 @@ const LOGO_URL =
   "https://cdn.shopify.com/s/files/1/0483/3758/4295/files/Untitled_3508_x_700_px.jpg?v=1779782616";
 
 const SUPPORT_PHONE = "0480 079 218";
+const PACKING_SLIP_WORD_FONT_SIZE = 21;
 const ORDERS_FETCH_LIMIT = 1000;
 const ORDERS_PAGE_SIZE = 100;
 
@@ -1063,7 +1064,7 @@ export default function Index() {
             min-height: auto !important;
             padding: 10mm 12mm 14mm !important;
             box-sizing: border-box !important;
-            font-size: 11pt !important;
+            font-size: 10.5pt !important;
             page-break-after: always !important;
             break-after: page !important;
           }
@@ -1101,17 +1102,17 @@ export default function Index() {
           }
 
           .packing-name {
-            font-size: 14pt;
+            font-size: 10.5pt;
             font-weight: bold;
           }
 
           .packing-order {
-            font-size: 11pt;
+            font-size: 10.5pt;
             font-weight: normal;
           }
 
           .packing-meta {
-            font-size: 11pt;
+            font-size: 10.5pt;
             font-weight: bold;
             margin: 8px 0;
             line-height: 1.35;
@@ -1122,12 +1123,12 @@ export default function Index() {
           }
 
           .packing-packer {
-            font-size: 11pt;
+            font-size: 10.5pt;
             margin-bottom: 6px;
           }
 
           .packing-instructions {
-            font-size: 11pt;
+            font-size: 10.5pt;
             margin-top: 4px;
           }
 
@@ -1149,13 +1150,13 @@ export default function Index() {
 
           .packing-label {
             width: 28%;
-            font-size: 11pt;
+            font-size: 10.5pt;
             font-weight: bold;
           }
 
           .packing-value {
             width: 72%;
-            font-size: 11pt;
+            font-size: 10.5pt;
             line-height: 1.35;
           }
 
@@ -1164,7 +1165,7 @@ export default function Index() {
           }
 
           .packing-note {
-            font-size: 10pt;
+            font-size: 10.5pt;
             font-style: italic;
             margin-top: 7px;
             line-height: 1.25;
@@ -1173,7 +1174,7 @@ export default function Index() {
           .packing-footer {
             margin-top: 18px;
             text-align: center;
-            font-size: 11pt;
+            font-size: 10.5pt;
             line-height: 1.25;
             page-break-inside: avoid;
             break-inside: avoid;
@@ -1194,11 +1195,11 @@ export default function Index() {
           .packing-bottom {
             text-align: center;
             margin-top: 20px;
-            font-size: 11pt;
+            font-size: 10.5pt;
           }
 
           .packing-big {
-            font-size: 11pt;
+            font-size: 10.5pt;
             font-weight: bold;
           }
 
@@ -2021,16 +2022,16 @@ function createPackingSlipsWordDocument(
           createWordLogoParagraph(docx, logoData, "right"),
           createWordParagraph(docx, `${order.customerName || "Customer Name"} ${order.name}`, {
             bold: true,
-            size: 32,
+            size: PACKING_SLIP_WORD_FONT_SIZE,
             spacingAfter: 120,
           }),
           createWordParagraph(docx, packingRouteDriverDateText, {
             bold: true,
-            size: 20,
+            size: PACKING_SLIP_WORD_FONT_SIZE,
             spacingAfter: 120,
           }),
           createWordParagraph(docx, "Packer ID: __________", {
-            size: 20,
+            size: PACKING_SLIP_WORD_FONT_SIZE,
             spacingAfter: 120,
           }),
           ...(formatBoxPreferencePackingInstructions(order)
@@ -2040,7 +2041,7 @@ function createPackingSlipsWordDocument(
                   `${getBoxPreferencePackingInstructionsLabel(order)}: ${formatBoxPreferencePackingInstructions(order)}`,
                   {
                     italics: true,
-                    size: 20,
+                    size: PACKING_SLIP_WORD_FONT_SIZE,
                     spacingAfter: 180,
                   },
                 ),
@@ -2283,7 +2284,7 @@ function createWordPackingFooter(
   return [
     createWordParagraph(docx, footerContent.body, {
       alignment: "center",
-      size: 22,
+      size: PACKING_SLIP_WORD_FONT_SIZE,
       spacingBefore: 260,
       spacingAfter: 120,
     }),
@@ -2296,12 +2297,12 @@ function createWordPackingFooter(
         new docx.TextRun({
           text: "Need help?",
           bold: true,
-          size: 22,
+          size: PACKING_SLIP_WORD_FONT_SIZE,
           font: "Calibri",
         }),
         new docx.TextRun({
           text: ` Text us on ${SUPPORT_PHONE}.`,
-          size: 22,
+          size: PACKING_SLIP_WORD_FONT_SIZE,
           font: "Calibri",
         }),
       ],
@@ -2309,7 +2310,7 @@ function createWordPackingFooter(
     createWordParagraph(docx, footerContent.closing, {
       alignment: "center",
       bold: true,
-      size: 22,
+      size: PACKING_SLIP_WORD_FONT_SIZE,
       spacingAfter: 0,
     }),
   ];
@@ -2319,8 +2320,8 @@ function createWordTwoColumnRow(docx: any, label: string, lines: string[]) {
   return new docx.TableRow({
     cantSplit: true,
     children: [
-      createWordCell(docx, [label], { bold: true, width: 28, fontSize: 24 }),
-      createWordCell(docx, lines, { width: 72 }),
+      createWordCell(docx, [label], { bold: true, width: 28, fontSize: PACKING_SLIP_WORD_FONT_SIZE }),
+      createWordCell(docx, lines, { width: 72, fontSize: PACKING_SLIP_WORD_FONT_SIZE }),
     ],
   });
 }
