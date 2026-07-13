@@ -1029,33 +1029,33 @@ export default function Index() {
           }
 
           .label-name {
-            font-size: 20px;
+            font-size: calc(20px + 2pt);
             line-height: 1.1;
             font-weight: 800;
             margin-bottom: 4px;
           }
 
           .label-address {
-            font-size: 11px;
+            font-size: calc(11px + 2pt);
             margin-bottom: 7px;
             line-height: 1.25;
           }
 
           .label-date {
-            font-size: 15px;
+            font-size: calc(15px + 2pt);
             font-style: italic;
             font-weight: 700;
             margin-bottom: 4px;
           }
 
           .label-details {
-            font-size: 13px;
+            font-size: calc(13px + 2pt);
             font-style: italic;
             line-height: 1.25;
           }
 
           .label-driver {
-            font-size: 16px;
+            font-size: calc(16px + 2pt);
             font-weight: 800;
           }
 
@@ -1596,7 +1596,7 @@ function PackingSlipsPrint({
   return (
     <>
       {orders.map((order) => {
-        const groups = groupLineItems(order.lineItems);
+        const groups = getPackingSlipLineItemGroups(order.lineItems);
         const packingInstructionsText = formatBoxPreferencePackingInstructions(order);
         const packingInstructionsLabel = getBoxPreferencePackingInstructionsLabel(order);
         const packingRouteDriverDateText = formatPackingSlipRouteDriverDate(order);
@@ -2000,7 +2000,7 @@ function createPackingSlipsWordDocument(
   return new docx.Document({
     styles: getWordStyles(),
     sections: orders.map((order) => {
-      const groups = groupLineItems(order.lineItems);
+      const groups = getPackingSlipLineItemGroups(order.lineItems);
       const packingRouteDriverDateText = formatPackingSlipRouteDriverDate(order);
 
       return {
@@ -2416,6 +2416,16 @@ function getWordExportFileName(printMode: PrintMode | "checklist", orders: Order
   }
 
   return `joy-local-packing-slips-${suffix}.docx`;
+}
+
+function getPackingSlipLineItemGroups(lineItems: LineItem[]) {
+  return groupLineItems(
+    lineItems.filter((item) => !isPackingSlipExcludedParentItem(item)),
+  );
+}
+
+function isPackingSlipExcludedParentItem(item: LineItem) {
+  return isSeasonalBoxLineItem(item) || isChecklistExcludedParentItem(item);
 }
 
 function groupLineItems(lineItems: LineItem[]) {
