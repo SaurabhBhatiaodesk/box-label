@@ -86,7 +86,10 @@ export const loader = async ({ request }: { request: Request }) => {
   let cursor: string | null = null;
 
   while (hasNextPage && allEdges.length < ORDERS_FETCH_LIMIT) {
-    const first = Math.min(ORDERS_PAGE_SIZE, ORDERS_FETCH_LIMIT - allEdges.length);
+    const first = Math.min(
+      ORDERS_PAGE_SIZE,
+      ORDERS_FETCH_LIMIT - allEdges.length,
+    );
 
     const response = await admin.graphql(
       `#graphql
@@ -170,7 +173,10 @@ export const loader = async ({ request }: { request: Request }) => {
     const data = await response.json();
 
     if (data?.errors) {
-      console.error("Shopify GraphQL errors:", JSON.stringify(data.errors, null, 2));
+      console.error(
+        "Shopify GraphQL errors:",
+        JSON.stringify(data.errors, null, 2),
+      );
       break;
     }
 
@@ -272,12 +278,16 @@ export const loader = async ({ request }: { request: Request }) => {
         "pickupLocationId",
       ]);
 
-      const pickupLocationCompany = getOrderValue(order, "Pickup-Location-Company", [
+      const pickupLocationCompany = getOrderValue(
+        order,
         "Pickup-Location-Company",
-        "Pickup Location Company",
-        "pickup_location_company",
-        "pickupLocationCompany",
-      ]);
+        [
+          "Pickup-Location-Company",
+          "Pickup Location Company",
+          "pickup_location_company",
+          "pickupLocationCompany",
+        ],
+      );
 
       const pickupLocationAddressLine1 = getOrderValue(
         order,
@@ -297,12 +307,16 @@ export const loader = async ({ request }: { request: Request }) => {
         "pickupLocationCity",
       ]);
 
-      const pickupLocationRegion = getOrderValue(order, "Pickup-Location-Region", [
+      const pickupLocationRegion = getOrderValue(
+        order,
         "Pickup-Location-Region",
-        "Pickup Location Region",
-        "pickup_location_region",
-        "pickupLocationRegion",
-      ]);
+        [
+          "Pickup-Location-Region",
+          "Pickup Location Region",
+          "pickup_location_region",
+          "pickupLocationRegion",
+        ],
+      );
 
       const pickupLocationPostalCode = getOrderValue(
         order,
@@ -315,12 +329,16 @@ export const loader = async ({ request }: { request: Request }) => {
         ],
       );
 
-      const pickupLocationCountry = getOrderValue(order, "Pickup-Location-Country", [
+      const pickupLocationCountry = getOrderValue(
+        order,
         "Pickup-Location-Country",
-        "Pickup Location Country",
-        "pickup_location_country",
-        "pickupLocationCountry",
-      ]);
+        [
+          "Pickup-Location-Country",
+          "Pickup Location Country",
+          "pickup_location_country",
+          "pickupLocationCountry",
+        ],
+      );
 
       const pickupDetails = getOrderValue(order, "Pickup Details", [
         "Pickup Details",
@@ -346,19 +364,27 @@ export const loader = async ({ request }: { request: Request }) => {
         "routeName",
       ]);
 
-      const easyRoutesStopNumber = getOrderValue(order, "EasyRoutes Stop Number", [
+      const easyRoutesStopNumber = getOrderValue(
+        order,
         "EasyRoutes Stop Number",
-        "easyroutes_stop_number",
-        "easyRoutesStopNumber",
-        "easy-routes-stop-number",
-      ]);
+        [
+          "EasyRoutes Stop Number",
+          "easyroutes_stop_number",
+          "easyRoutesStopNumber",
+          "easy-routes-stop-number",
+        ],
+      );
 
-      const easyRoutesRouteStart = getOrderValue(order, "EasyRoutes Route Start", [
+      const easyRoutesRouteStart = getOrderValue(
+        order,
         "EasyRoutes Route Start",
-        "easyroutes_route_start",
-        "easyRoutesRouteStart",
-        "easy-routes-route-start",
-      ]);
+        [
+          "EasyRoutes Route Start",
+          "easyroutes_route_start",
+          "easyRoutesRouteStart",
+          "easy-routes-route-start",
+        ],
+      );
 
       const easyRoutesStopEta = getOrderValue(order, "EasyRoutes Stop ETA", [
         "EasyRoutes Stop ETA",
@@ -388,7 +414,8 @@ export const loader = async ({ request }: { request: Request }) => {
         "driverName",
       ]);
 
-      const driverName = parseDriverFromEasyRoutesRoute(easyRoutesRoute) || easyRoutesDriverName;
+      const driverName =
+        parseDriverFromEasyRoutesRoute(easyRoutesRoute) || easyRoutesDriverName;
 
       const boxPreference = getOrderValue(order, "Box Preference", [
         "Box Preference",
@@ -429,7 +456,9 @@ export const loader = async ({ request }: { request: Request }) => {
           shipping?.name ||
           `${order.customer?.firstName || ""} ${order.customer?.lastName || ""}`.trim(),
 
-        address: [shipping?.address1, shipping?.address2].filter(Boolean).join(", "),
+        address: [shipping?.address1, shipping?.address2]
+          .filter(Boolean)
+          .join(", "),
 
         city: shipping?.city || "",
         province: shipping?.province || "",
@@ -474,14 +503,43 @@ export const loader = async ({ request }: { request: Request }) => {
 export default function Index() {
   const { orders } = useLoaderData() as { orders: Order[] };
   const revalidator = useRevalidator();
-  const refreshWasLoading = useRef(false);
+  const lastSilentRefreshRef = useRef(0);
+
+  useEffect(() => {
+    const refreshSilently = () => {
+      const now = Date.now();
+
+      // Avoid repeated requests when Shopify/admin focus events fire multiple times.
+      if (now - lastSilentRefreshRef.current < 15000) {
+        return;
+      }
+
+      lastSilentRefreshRef.current = now;
+      revalidator.revalidate();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshSilently();
+      }
+    };
+
+    window.addEventListener("focus", refreshSilently);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", refreshSilently);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [revalidator]);
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [ordersLimit, setOrdersLimit] = useState("20");
   const [printMode, setPrintMode] = useState<PrintMode>("labels");
   const [deliveryDateSearch, setDeliveryDateSearch] = useState("");
-  const [routeCourierFilter, setRouteCourierFilter] = useState<"all" | "local" | "courier">("all");
-  const [pendingAction, setPendingAction] = useState<"print" | "word" | null>(null);
+  const [routeCourierFilter, setRouteCourierFilter] = useState<
+    "all" | "local" | "courier"
+  >("all");
 
   const filteredOrders = useMemo(() => {
     const search = normalizeSearchText(deliveryDateSearch);
@@ -533,31 +591,6 @@ export default function Index() {
     return orders.filter((order) => order.driverName).length;
   }, [orders]);
 
-  useEffect(() => {
-    if (revalidator.state === "loading") {
-      refreshWasLoading.current = true;
-      return;
-    }
-
-    if (!pendingAction || !refreshWasLoading.current) {
-      return;
-    }
-
-    refreshWasLoading.current = false;
-    const action = pendingAction;
-    setPendingAction(null);
-
-    if (action === "print") {
-      window.setTimeout(() => window.print(), 0);
-      return;
-    }
-
-    void exportSelectedOrdersToWord(selectedOrders, printMode).catch((error) => {
-      console.error("Word export failed:", error);
-      alert("Word export failed. Please check the console/logs and try again.");
-    });
-  }, [pendingAction, printMode, revalidator.state, selectedOrders]);
-
   const toggleOrder = (orderId: string) => {
     setSelectedIds((current) =>
       current.includes(orderId)
@@ -574,22 +607,16 @@ export default function Index() {
     }
   };
 
-  const refreshThenRun = (action: "print" | "word") => {
-    refreshWasLoading.current = false;
-    setPendingAction(action);
-    revalidator.revalidate();
-  };
-
   const handlePrint = () => {
     if (selectedOrders.length === 0) {
       alert("Please select at least one order.");
       return;
     }
 
-    refreshThenRun("print");
+    window.print();
   };
 
-  const handleExportWord = () => {
+  const handleExportWord = async () => {
     if (selectedOrders.length === 0) {
       alert("Please select at least one order.");
       return;
@@ -604,7 +631,12 @@ export default function Index() {
       return;
     }
 
-    refreshThenRun("word");
+    try {
+      await exportSelectedOrdersToWord(selectedOrders, printMode);
+    } catch (error) {
+      console.error("Word export failed:", error);
+      alert("Word export failed. Please check the console/logs and try again.");
+    }
   };
 
   const printButtonLabel = getPrintButtonLabel(printMode);
@@ -1325,7 +1357,8 @@ export default function Index() {
               <div className="eyebrow">Print centre</div>
               <h1 className="page-title">Box Label Printer</h1>
               <p className="page-description">
-                Search orders by delivery date or EasyRoutes date, then print labels, packing slips, or checklist.
+                Search orders by delivery date or EasyRoutes date, then print
+                labels, packing slips, or checklist.
               </p>
             </div>
 
@@ -1333,18 +1366,29 @@ export default function Index() {
               <select
                 className="select-box template-select"
                 value={printMode}
-                onChange={(event) => setPrintMode(event.target.value as PrintMode)}
+                onChange={(event) =>
+                  setPrintMode(event.target.value as PrintMode)
+                }
               >
                 <option value="labels">Box Labels - Local Orders</option>
-                <option value="courierLabels">Box Labels - Courier Orders</option>
-                <option value="localPackingSlip">Packing Slip - Local Orders</option>
-                <option value="courierPackingSlip">Packing Slip - Courier Orders</option>
+                <option value="courierLabels">
+                  Box Labels - Courier Orders
+                </option>
+                <option value="localPackingSlip">
+                  Packing Slip - Local Orders
+                </option>
+                <option value="courierPackingSlip">
+                  Packing Slip - Courier Orders
+                </option>
                 <option value="checklist">Checklist</option>
               </select>
 
-
               {showWordExportButton ? (
-                <button className="button-secondary" type="button" onClick={handleExportWord}>
+                <button
+                  className="button-secondary"
+                  type="button"
+                  onClick={handleExportWord}
+                >
                   Export to Word
                 </button>
               ) : null}
@@ -1382,7 +1426,8 @@ export default function Index() {
               <div>
                 <h2 className="card-title">Orders</h2>
                 <p className="card-subtitle">
-                  Showing {visibleOrders.length} of {filteredOrders.length} matching orders.
+                  Showing {visibleOrders.length} of {filteredOrders.length}{" "}
+                  matching orders.
                 </p>
               </div>
 
@@ -1403,14 +1448,18 @@ export default function Index() {
                 </select>
 
                 <button className="button-secondary" onClick={toggleAll}>
-                  {selectedIds.length === visibleOrders.length ? "Unselect All" : "Select All"}
+                  {selectedIds.length === visibleOrders.length
+                    ? "Unselect All"
+                    : "Select All"}
                 </button>
               </div>
             </div>
 
             <div className="search-row">
               <div className="field">
-                <label htmlFor="deliveryDateSearch">Search by delivery date / EasyRoutes date / driver</label>
+                <label htmlFor="deliveryDateSearch">
+                  Search by delivery date / EasyRoutes date / driver
+                </label>
                 <input
                   id="deliveryDateSearch"
                   className="search-input"
@@ -1425,19 +1474,27 @@ export default function Index() {
               </div>
 
               <div className="field">
-                <label htmlFor="routeCourierFilter">EasyRoutes Route filter</label>
+                <label htmlFor="routeCourierFilter">
+                  EasyRoutes Route filter
+                </label>
                 <select
                   id="routeCourierFilter"
                   className="select-box"
                   value={routeCourierFilter}
                   onChange={(event) => {
-                    setRouteCourierFilter(event.target.value as "all" | "local" | "courier");
+                    setRouteCourierFilter(
+                      event.target.value as "all" | "local" | "courier",
+                    );
                     setSelectedIds([]);
                   }}
                 >
                   <option value="all">All routes</option>
-                  <option value="local">Local orders - route does not contain Courier</option>
-                  <option value="courier">Courier orders - route contains Courier</option>
+                  <option value="local">
+                    Local orders - route does not contain Courier
+                  </option>
+                  <option value="courier">
+                    Courier orders - route contains Courier
+                  </option>
                 </select>
               </div>
 
@@ -1474,7 +1531,12 @@ export default function Index() {
 
                   <tbody>
                     {visibleOrders.map((order) => (
-                      <tr key={order.id} className={selectedIds.includes(order.id) ? "selected-row" : ""}>
+                      <tr
+                        key={order.id}
+                        className={
+                          selectedIds.includes(order.id) ? "selected-row" : ""
+                        }
+                      >
                         <td className="checkbox-cell">
                           <input
                             className="order-checkbox"
@@ -1488,20 +1550,34 @@ export default function Index() {
                           <div className="primary-text">{order.name}</div>
                         </td>
 
-                        <td>{order.customerName || <span className="muted-text">No customer</span>}</td>
+                        <td>
+                          {order.customerName || (
+                            <span className="muted-text">No customer</span>
+                          )}
+                        </td>
 
                         <td className="address-cell">
-                          {formatShippingAddress(order) || <span className="muted-text">-</span>}
+                          {formatShippingAddress(order) || (
+                            <span className="muted-text">-</span>
+                          )}
                         </td>
 
                         <td>
-                          <div className="primary-text">{order.deliveryDate || "-"}</div>
-                          {order.deliveryDay ? <div className="muted-text">{order.deliveryDay}</div> : null}
+                          <div className="primary-text">
+                            {order.deliveryDate || "-"}
+                          </div>
+                          {order.deliveryDay ? (
+                            <div className="muted-text">
+                              {order.deliveryDay}
+                            </div>
+                          ) : null}
                         </td>
 
                         <td>
                           {order.deliveryMethod ? (
-                            <span className="badge badge-green">{order.deliveryMethod}</span>
+                            <span className="badge badge-green">
+                              {order.deliveryMethod}
+                            </span>
                           ) : (
                             <span className="badge badge-muted">No method</span>
                           )}
@@ -1510,15 +1586,23 @@ export default function Index() {
                         <td className="details-cell">
                           {order.easyRoutesRoute ? (
                             <>
-                              <div className="primary-text">{order.easyRoutesRoute}</div>
+                              <div className="primary-text">
+                                {order.easyRoutesRoute}
+                              </div>
                               {order.easyRoutesStopNumber ? (
-                                <div className="muted-text">Stop Number: {order.easyRoutesStopNumber}</div>
+                                <div className="muted-text">
+                                  Stop Number: {order.easyRoutesStopNumber}
+                                </div>
                               ) : null}
                               {order.easyRoutesRouteStart ? (
-                                <div className="muted-text">Route Start: {order.easyRoutesRouteStart}</div>
+                                <div className="muted-text">
+                                  Route Start: {order.easyRoutesRouteStart}
+                                </div>
                               ) : null}
                               {order.easyRoutesStopEta ? (
-                                <div className="muted-text">Stop ETA: {order.easyRoutesStopEta}</div>
+                                <div className="muted-text">
+                                  Stop ETA: {order.easyRoutesStopEta}
+                                </div>
                               ) : null}
                             </>
                           ) : (
@@ -1544,9 +1628,13 @@ export default function Index() {
       </div>
 
       <div className="print-area">
-        {printMode === "labels" ? <LabelsPrint orders={selectedOrders} template="local" /> : null}
+        {printMode === "labels" ? (
+          <LabelsPrint orders={selectedOrders} template="local" />
+        ) : null}
 
-        {printMode === "courierLabels" ? <LabelsPrint orders={selectedOrders} template="courier" /> : null}
+        {printMode === "courierLabels" ? (
+          <LabelsPrint orders={selectedOrders} template="courier" />
+        ) : null}
 
         {printMode === "localPackingSlip" ? (
           <PackingSlipsPrint orders={selectedOrders} type="Local Orders" />
@@ -1556,7 +1644,9 @@ export default function Index() {
           <PackingSlipsPrint orders={selectedOrders} type="Courier Orders" />
         ) : null}
 
-        {printMode === "checklist" ? <ChecklistPrint orders={selectedOrders} /> : null}
+        {printMode === "checklist" ? (
+          <ChecklistPrint orders={selectedOrders} />
+        ) : null}
       </div>
     </div>
   );
@@ -1581,18 +1671,34 @@ function LabelsPrint({
 
             return (
               <div className="label-box" key={order.id}>
-                <img className="label-logo" src={LOGO_URL} alt="Joy Wholefoods" />
+                <img
+                  className="label-logo"
+                  src={LOGO_URL}
+                  alt="Joy Wholefoods"
+                />
 
-                <div className="label-name">{order.customerName || "Customer Name"}</div>
+                <div className="label-name">
+                  {order.customerName || "Customer Name"}
+                </div>
 
-                <div className="label-address">{formatBoxLabelAddress(order)}</div>
+                <div className="label-address">
+                  {formatBoxLabelAddress(order)}
+                </div>
 
-                <div className="label-date">{order.deliveryDate || "Delivery Date"}</div>
+                <div className="label-date">
+                  {order.deliveryDate || "Delivery Date"}
+                </div>
 
                 <div className="label-details">
-                  {labelRouteText ? <div className="label-driver">{labelRouteText}</div> : null}
-                  {order.pickupDetails ? <div>{order.pickupDetails}</div> : null}
-                  {order.pickupLocationCompany ? <div>{order.pickupLocationCompany}</div> : null}
+                  {labelRouteText ? (
+                    <div className="label-driver">{labelRouteText}</div>
+                  ) : null}
+                  {order.pickupDetails ? (
+                    <div>{order.pickupDetails}</div>
+                  ) : null}
+                  {order.pickupLocationCompany ? (
+                    <div>{order.pickupLocationCompany}</div>
+                  ) : null}
                 </div>
               </div>
             );
@@ -1614,9 +1720,12 @@ function PackingSlipsPrint({
     <>
       {orders.map((order) => {
         const groups = getPackingSlipLineItemGroups(order.lineItems);
-        const packingInstructionsText = formatBoxPreferencePackingInstructions(order);
-        const packingInstructionsLabel = getBoxPreferencePackingInstructionsLabel(order);
-        const packingRouteDriverDateText = formatPackingSlipRouteDriverDate(order);
+        const packingInstructionsText =
+          formatBoxPreferencePackingInstructions(order);
+        const packingInstructionsLabel =
+          getBoxPreferencePackingInstructionsLabel(order);
+        const packingRouteDriverDateText =
+          formatPackingSlipRouteDriverDate(order);
 
         return (
           <div className="packing-page" key={order.id}>
@@ -1632,7 +1741,9 @@ function PackingSlipsPrint({
 
                       <div className="packing-meta">
                         {packingRouteDriverDateText ? (
-                          <div className="packing-driver-line">{packingRouteDriverDateText}</div>
+                          <div className="packing-driver-line">
+                            {packingRouteDriverDateText}
+                          </div>
                         ) : null}
                       </div>
 
@@ -1643,14 +1754,19 @@ function PackingSlipsPrint({
                       {packingInstructionsText ? (
                         <div className="packing-instructions">
                           <i>
-                            <b>{packingInstructionsLabel}:</b> {packingInstructionsText}
+                            <b>{packingInstructionsLabel}:</b>{" "}
+                            {packingInstructionsText}
                           </i>
                         </div>
                       ) : null}
                     </td>
 
                     <td className="packing-right">
-                      <img className="packing-logo" src={LOGO_URL} alt="Joy Wholefoods Logo" />
+                      <img
+                        className="packing-logo"
+                        src={LOGO_URL}
+                        alt="Joy Wholefoods Logo"
+                      />
                     </td>
                   </tr>
                 </tbody>
@@ -1661,7 +1777,12 @@ function PackingSlipsPrint({
                   <tr>
                     <td className="packing-label">Produce</td>
                     <td className="packing-value">
-                      <ItemLines items={[...groups.produceOnly, ...groups.produceAndGroceries]} />
+                      <ItemLines
+                        items={[
+                          ...groups.produceOnly,
+                          ...groups.produceAndGroceries,
+                        ]}
+                      />
                     </td>
                   </tr>
 
@@ -1676,7 +1797,8 @@ function PackingSlipsPrint({
                     <td className="packing-label">
                       Frozen
                       <div className="packing-note">
-                        Meat may defrost a little in transit — if it’s cold, it’s safe to refreeze
+                        Meat may defrost a little in transit — if it’s cold,
+                        it’s safe to refreeze
                       </div>
                     </td>
                     <td className="packing-value">
@@ -1734,7 +1856,9 @@ function ChecklistPrint({ orders }: { orders: Order[] }) {
         <div>
           <div className="checklist-title">Checklist</div>
           {deliveryDateLabel ? (
-            <div className="checklist-date">Delivery Date: {deliveryDateLabel}</div>
+            <div className="checklist-date">
+              Delivery Date: {deliveryDateLabel}
+            </div>
           ) : null}
         </div>
       </div>
@@ -1759,12 +1883,17 @@ function ChecklistPrint({ orders }: { orders: Order[] }) {
             return (
               <tr key={order.id}>
                 <td>
-                  <div className="checklist-customer-name">{order.customerName || "Customer Name"}</div>
+                  <div className="checklist-customer-name">
+                    {order.customerName || "Customer Name"}
+                  </div>
                 </td>
                 <td>{formatDriverPickupDetails(order)}</td>
                 <td>{formatBoxPreferencePackingInstructions(order)}</td>
                 <td>
-                  <ChecklistItemLines items={checklistGroups.groceries} showSku />
+                  <ChecklistItemLines
+                    items={checklistGroups.groceries}
+                    showSku
+                  />
                 </td>
                 <td>
                   <ChecklistItemLines items={checklistGroups.frozen} showSku />
@@ -1857,7 +1986,9 @@ function getChecklistLineItemGroups(groups: ReturnType<typeof groupLineItems>) {
   };
 }
 
-function getChecklistGroceryLineItems(groups: ReturnType<typeof groupLineItems>) {
+function getChecklistGroceryLineItems(
+  groups: ReturnType<typeof groupLineItems>,
+) {
   return sortLineItemsAlphabetically(
     [...groups.groceriesOnly, ...groups.produceAndGroceries].filter(
       (item) =>
@@ -1867,7 +1998,9 @@ function getChecklistGroceryLineItems(groups: ReturnType<typeof groupLineItems>)
   );
 }
 
-function getChecklistFrozenLineItems(groups: ReturnType<typeof groupLineItems>) {
+function getChecklistFrozenLineItems(
+  groups: ReturnType<typeof groupLineItems>,
+) {
   return sortLineItemsAlphabetically(
     groups.frozen.filter((item) => !isChecklistExcludedParentItem(item)),
   );
@@ -1892,7 +2025,9 @@ function isChecklistExcludedProduceItem(item: LineItem) {
     ].join(" "),
   );
 
-  const itemNameText = normalizeProductType([item.title, item.productName].join(" "));
+  const itemNameText = normalizeProductType(
+    [item.title, item.productName].join(" "),
+  );
 
   if (itemNameText.includes("sandy creek gourmet produce")) {
     return true;
@@ -1914,7 +2049,9 @@ function isChecklistExcludedProduceItem(item: LineItem) {
 }
 
 function isChecklistExcludedParentItem(item: LineItem) {
-  const itemNameText = normalizeProductType([item.title, item.productName].join(" "));
+  const itemNameText = normalizeProductType(
+    [item.title, item.productName].join(" "),
+  );
 
   if (itemNameText.includes("meal kit")) {
     return true;
@@ -1927,7 +2064,9 @@ function isChecklistExcludedParentItem(item: LineItem) {
     "weeknight organic dinners box",
   ];
 
-  return excludedParentNames.some((parentName) => itemNameText.includes(parentName));
+  return excludedParentNames.some((parentName) =>
+    itemNameText.includes(parentName),
+  );
 }
 
 function getLineItemQuantity(item: LineItem) {
@@ -1939,9 +2078,7 @@ function getLineItemDisplayName(item: LineItem) {
 }
 
 function cleanLineItemName(value: string) {
-  return (value || "")
-    .replace(/\s*[-–—]\s*default title\s*$/i, "")
-    .trim();
+  return (value || "").replace(/\s*[-–—]\s*default title\s*$/i, "").trim();
 }
 
 function formatLineItem(item: LineItem) {
@@ -1965,18 +2102,23 @@ function getPackingSlipFooterContent(type: "Local Orders" | "Courier Orders") {
     return {
       heading: "Courier Orders",
       body: "Your box might look a little overpacked, but that’s just to protect your goodies! Wherever possible, our packaging is recycled, reused or recyclable. Please reuse or recycle it if you can.",
-      closing: "You just supported local farmers and made a kinder choice for the planet. 💚",
+      closing:
+        "You just supported local farmers and made a kinder choice for the planet. 💚",
     };
   }
 
   return {
     heading: "Local Delivery",
     body: "Please leave your empty box out for collection with your next delivery. We also happily reuse clean plastic bottles as ice packs. Thanks for helping us reduce waste.",
-    closing: "You just supported local farmers and made a kinder choice for the planet. 💚",
+    closing:
+      "You just supported local farmers and made a kinder choice for the planet. 💚",
   };
 }
 
-async function exportSelectedOrdersToWord(orders: Order[], printMode: PrintMode) {
+async function exportSelectedOrdersToWord(
+  orders: Order[],
+  printMode: PrintMode,
+) {
   const docx = await import("docx");
   const { saveAs } = await import("file-saver");
   const logoData = await fetchWordLogoData();
@@ -1991,7 +2133,12 @@ async function exportSelectedOrdersToWord(orders: Order[], printMode: PrintMode)
   const packingSlipType =
     printMode === "courierPackingSlip" ? "Courier Orders" : "Local Orders";
 
-  const document = createPackingSlipsWordDocument(docx, orders, logoData, packingSlipType);
+  const document = createPackingSlipsWordDocument(
+    docx,
+    orders,
+    logoData,
+    packingSlipType,
+  );
   const blob = await docx.Packer.toBlob(document);
   saveAs(blob, getWordExportFileName(printMode, orders));
 }
@@ -2002,7 +2149,9 @@ async function fetchWordLogoData() {
   });
 
   if (!response.ok) {
-    throw new Error(`Unable to load the Joy Wholefoods logo (${response.status}).`);
+    throw new Error(
+      `Unable to load the Joy Wholefoods logo (${response.status}).`,
+    );
   }
 
   return new Uint8Array(await response.arrayBuffer());
@@ -2018,7 +2167,8 @@ function createPackingSlipsWordDocument(
     styles: getWordStyles(),
     sections: orders.map((order) => {
       const groups = getPackingSlipLineItemGroups(order.lineItems);
-      const packingRouteDriverDateText = formatPackingSlipRouteDriverDate(order);
+      const packingRouteDriverDateText =
+        formatPackingSlipRouteDriverDate(order);
 
       return {
         properties: {
@@ -2037,11 +2187,15 @@ function createPackingSlipsWordDocument(
         },
         children: [
           createWordLogoParagraph(docx, logoData, "right"),
-          createWordParagraph(docx, `${order.customerName || "Customer Name"} ${order.name}`, {
-            bold: true,
-            size: PACKING_SLIP_WORD_FONT_SIZE,
-            spacingAfter: 120,
-          }),
+          createWordParagraph(
+            docx,
+            `${order.customerName || "Customer Name"} ${order.name}`,
+            {
+              bold: true,
+              size: PACKING_SLIP_WORD_FONT_SIZE,
+              spacingAfter: 120,
+            },
+          ),
           createWordParagraph(docx, packingRouteDriverDateText, {
             bold: true,
             size: PACKING_SLIP_WORD_FONT_SIZE,
@@ -2073,11 +2227,25 @@ function createPackingSlipsWordDocument(
               createWordTwoColumnRow(
                 docx,
                 "Produce",
-                [...groups.produceOnly, ...groups.produceAndGroceries].map(formatLineItem),
+                [...groups.produceOnly, ...groups.produceAndGroceries].map(
+                  formatLineItem,
+                ),
               ),
-              createWordTwoColumnRow(docx, "Groceries", groups.groceriesOnly.map(formatLineItem)),
-              createWordTwoColumnRow(docx, "Frozen", groups.frozen.map(formatLineItem)),
-              createWordTwoColumnRow(docx, "Fresh Baked", groups.baked.map(formatLineItem)),
+              createWordTwoColumnRow(
+                docx,
+                "Groceries",
+                groups.groceriesOnly.map(formatLineItem),
+              ),
+              createWordTwoColumnRow(
+                docx,
+                "Frozen",
+                groups.frozen.map(formatLineItem),
+              ),
+              createWordTwoColumnRow(
+                docx,
+                "Fresh Baked",
+                groups.baked.map(formatLineItem),
+              ),
             ],
           }),
           ...createWordPackingFooter(docx, type),
@@ -2122,11 +2290,15 @@ function createChecklistWordDocument(
           }),
           ...(deliveryDateLabel
             ? [
-                createWordParagraph(docx, `Delivery Date: ${deliveryDateLabel}`, {
-                  bold: true,
-                  size: 20,
-                  spacingAfter: 180,
-                }),
+                createWordParagraph(
+                  docx,
+                  `Delivery Date: ${deliveryDateLabel}`,
+                  {
+                    bold: true,
+                    size: 20,
+                    spacingAfter: 180,
+                  },
+                ),
               ]
             : []),
           new docx.Table({
@@ -2139,11 +2311,23 @@ function createChecklistWordDocument(
                 tableHeader: true,
                 children: [
                   createWordCell(docx, ["Name"], { bold: true, width: 14 }),
-                  createWordCell(docx, ["Driver/Pickup Details"], { bold: true, width: 14 }),
-                  createWordCell(docx, ["Packing Instructions"], { bold: true, width: 18 }),
-                  createWordCell(docx, ["Groceries"], { bold: true, width: 18 }),
+                  createWordCell(docx, ["Driver/Pickup Details"], {
+                    bold: true,
+                    width: 14,
+                  }),
+                  createWordCell(docx, ["Packing Instructions"], {
+                    bold: true,
+                    width: 18,
+                  }),
+                  createWordCell(docx, ["Groceries"], {
+                    bold: true,
+                    width: 18,
+                  }),
                   createWordCell(docx, ["Frozen"], { bold: true, width: 18 }),
-                  createWordCell(docx, ["Fresh Baked"], { bold: true, width: 18 }),
+                  createWordCell(docx, ["Fresh Baked"], {
+                    bold: true,
+                    width: 18,
+                  }),
                 ],
               }),
               ...checklistOrders.map((order) => {
@@ -2153,20 +2337,38 @@ function createChecklistWordDocument(
                 return new docx.TableRow({
                   cantSplit: true,
                   children: [
-                    createWordCell(docx, [order.customerName || "Customer Name"], {
-                      width: 14,
-                    }),
-                    createWordCell(docx, splitWordLines(formatDriverPickupDetails(order)), {
-                      width: 14,
-                    }),
                     createWordCell(
                       docx,
-                      splitWordLines(formatBoxPreferencePackingInstructions(order)),
+                      [order.customerName || "Customer Name"],
+                      {
+                        width: 14,
+                      },
+                    ),
+                    createWordCell(
+                      docx,
+                      splitWordLines(formatDriverPickupDetails(order)),
+                      {
+                        width: 14,
+                      },
+                    ),
+                    createWordCell(
+                      docx,
+                      splitWordLines(
+                        formatBoxPreferencePackingInstructions(order),
+                      ),
                       { width: 18 },
                     ),
-                    createWordChecklistItemsCell(docx, checklistGroups.groceries, { width: 18 }),
-                    createWordChecklistItemsCell(docx, checklistGroups.frozen, { width: 18 }),
-                    createWordChecklistItemsCell(docx, checklistGroups.baked, { width: 18 }),
+                    createWordChecklistItemsCell(
+                      docx,
+                      checklistGroups.groceries,
+                      { width: 18 },
+                    ),
+                    createWordChecklistItemsCell(docx, checklistGroups.frozen, {
+                      width: 18,
+                    }),
+                    createWordChecklistItemsCell(docx, checklistGroups.baked, {
+                      width: 18,
+                    }),
                   ],
                 });
               }),
@@ -2337,8 +2539,15 @@ function createWordTwoColumnRow(docx: any, label: string, lines: string[]) {
   return new docx.TableRow({
     cantSplit: true,
     children: [
-      createWordCell(docx, [label], { bold: true, width: 28, fontSize: PACKING_SLIP_WORD_FONT_SIZE }),
-      createWordCell(docx, lines, { width: 72, fontSize: PACKING_SLIP_WORD_FONT_SIZE }),
+      createWordCell(docx, [label], {
+        bold: true,
+        width: 28,
+        fontSize: PACKING_SLIP_WORD_FONT_SIZE,
+      }),
+      createWordCell(docx, lines, {
+        width: 72,
+        fontSize: PACKING_SLIP_WORD_FONT_SIZE,
+      }),
     ],
   });
 }
@@ -2389,7 +2598,10 @@ function createWordParagraph(
     spacingAfter?: number;
   } = {},
 ) {
-  const alignment = options.alignment === "center" ? docx.AlignmentType.CENTER : docx.AlignmentType.LEFT;
+  const alignment =
+    options.alignment === "center"
+      ? docx.AlignmentType.CENTER
+      : docx.AlignmentType.LEFT;
 
   return new docx.Paragraph({
     alignment,
@@ -2416,7 +2628,10 @@ function splitWordLines(value: string) {
     .filter(Boolean);
 }
 
-function getWordExportFileName(printMode: PrintMode | "checklist", orders: Order[]) {
+function getWordExportFileName(
+  printMode: PrintMode | "checklist",
+  orders: Order[],
+) {
   const deliveryDate = getChecklistDeliveryDateLabel(orders)
     .replace(/[^a-z0-9]+/gi, "-")
     .replace(/^-+|-+$/g, "")
@@ -2446,7 +2661,9 @@ function isPackingSlipExcludedParentItem(item: LineItem) {
 }
 
 function groupLineItems(lineItems: LineItem[]) {
-  const activeLineItems = lineItems.filter((item) => getLineItemQuantity(item) > 0);
+  const activeLineItems = lineItems.filter(
+    (item) => getLineItemQuantity(item) > 0,
+  );
 
   const groups = activeLineItems.reduce(
     (groupedItems, item) => {
@@ -2469,7 +2686,9 @@ function groupLineItems(lineItems: LineItem[]) {
 
   const groceriesOnly = sortLineItemsAlphabetically(groups.groceriesOnly);
   const produceOnly = sortLineItemsAlphabetically(groups.produceOnly);
-  const produceAndGroceries = sortLineItemsAlphabetically(groups.produceAndGroceries);
+  const produceAndGroceries = sortLineItemsAlphabetically(
+    groups.produceAndGroceries,
+  );
   const frozen = sortLineItemsAlphabetically(groups.frozen);
   const baked = sortLineItemsAlphabetically(groups.baked);
 
@@ -2511,10 +2730,14 @@ function sortLineItemsAlphabetically(items: LineItem[]) {
       return displayNameCompare;
     }
 
-    return (firstItem.sku || "").localeCompare(secondItem.sku || "", undefined, {
-      numeric: true,
-      sensitivity: "base",
-    });
+    return (firstItem.sku || "").localeCompare(
+      secondItem.sku || "",
+      undefined,
+      {
+        numeric: true,
+        sensitivity: "base",
+      },
+    );
   });
 }
 
@@ -2582,7 +2805,8 @@ function isSeasonalBoxLineItem(item: LineItem) {
 
 function getLineItemCategory(
   item: LineItem,
-): "groceriesOnly" | "produceOnly" | "produceAndGroceries" | "frozen" | "baked" {
+):
+  "groceriesOnly" | "produceOnly" | "produceAndGroceries" | "frozen" | "baked" {
   const productType = normalizeProductType(item.productType);
   const categoryText = normalizeProductType(
     [
@@ -2594,11 +2818,19 @@ function getLineItemCategory(
     ].join(" "),
   );
 
-  if (productType === "frozen" || categoryText.includes(" frozen ") || categoryText.endsWith(" frozen")) {
+  if (
+    productType === "frozen" ||
+    categoryText.includes(" frozen ") ||
+    categoryText.endsWith(" frozen")
+  ) {
     return "frozen";
   }
 
-  if (productType === "bakery" || productType === "fresh baked" || categoryText.includes("fresh baked")) {
+  if (
+    productType === "bakery" ||
+    productType === "fresh baked" ||
+    categoryText.includes("fresh baked")
+  ) {
     return "baked";
   }
 
@@ -2641,9 +2873,7 @@ function formatShippingAddress(order: Order) {
 }
 
 function formatBoxLabelAddress(order: Order) {
-  return [order.address, order.city]
-    .filter(Boolean)
-    .join(", ");
+  return [order.address, order.city].filter(Boolean).join(", ");
 }
 
 function formatBoxPreferencePackingInstructions(order: Order) {
@@ -2681,7 +2911,9 @@ function formatPackingSlipRouteDriverDate(order: Order) {
   const deliveryDate = order.deliveryDate?.trim();
 
   if (deliveryLocation || driverName) {
-    return [deliveryLocation, driverName, deliveryDate].filter(Boolean).join(" - ");
+    return [deliveryLocation, driverName, deliveryDate]
+      .filter(Boolean)
+      .join(" - ");
   }
 
   return "";
@@ -2714,8 +2946,12 @@ function sortOrdersForPackingAndLabels(orders: Order[]) {
       return firstGroup - secondGroup;
     }
 
-    const firstCustomerName = normalizeSearchText(firstOrder.customerName || firstOrder.name);
-    const secondCustomerName = normalizeSearchText(secondOrder.customerName || secondOrder.name);
+    const firstCustomerName = normalizeSearchText(
+      firstOrder.customerName || firstOrder.name,
+    );
+    const secondCustomerName = normalizeSearchText(
+      secondOrder.customerName || secondOrder.name,
+    );
 
     return firstCustomerName.localeCompare(secondCustomerName, undefined, {
       numeric: true,
@@ -2778,8 +3014,9 @@ function getCurrentOrderPackingInstructions(order: {
   orderPackingInstructionsMetafield?: { value?: string | null } | null;
 }) {
   const orderNote = (order.note || "").trim();
-  const orderMetafieldValue =
-    (order.orderPackingInstructionsMetafield?.value || "").trim();
+  const orderMetafieldValue = (
+    order.orderPackingInstructionsMetafield?.value || ""
+  ).trim();
   const orderAttributeValue = getCustomValue(order.customAttributes || [], [
     "Packing Instructions",
     "packing_instructions",
@@ -2789,17 +3026,21 @@ function getCurrentOrderPackingInstructions(order: {
     "instruction",
   ]).trim();
 
-  const values = [orderNote, orderMetafieldValue, orderAttributeValue].filter(Boolean);
+  const values = [orderNote, orderMetafieldValue, orderAttributeValue].filter(
+    Boolean,
+  );
 
-  return values.filter((value, index) => {
-    const normalizedValue = normalizeSearchText(value);
-    return (
-      normalizedValue &&
-      values.findIndex(
-        (candidate) => normalizeSearchText(candidate) === normalizedValue,
-      ) === index
-    );
-  }).join(" - ");
+  return values
+    .filter((value, index) => {
+      const normalizedValue = normalizeSearchText(value);
+      return (
+        normalizedValue &&
+        values.findIndex(
+          (candidate) => normalizeSearchText(candidate) === normalizedValue,
+        ) === index
+      );
+    })
+    .join(" - ");
 }
 
 function getOrderValue(
@@ -2817,7 +3058,10 @@ function getOrderValue(
   );
 }
 
-function getCustomValue(customAttributes: CustomAttribute[] = [], keys: string[]) {
+function getCustomValue(
+  customAttributes: CustomAttribute[] = [],
+  keys: string[],
+) {
   const normalizedKeys = keys.map((key) => normalizeKey(key));
 
   const found = customAttributes.find((attr) =>
@@ -2854,11 +3098,7 @@ function normalizeKey(value: string) {
 }
 
 function normalizeSearchText(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/,/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return value.toLowerCase().replace(/,/g, "").replace(/\s+/g, " ").trim();
 }
 
 function chunkArray<T>(array: T[], size: number): T[][] {
@@ -2897,7 +3137,7 @@ function getPageCss(printMode: PrintMode) {
       }
     `;
   }
-// page size for box labels is set in the CSS file (box-labels.css) to ensure proper scaling and layout for printing.
+  // page size for box labels is set in the CSS file (box-labels.css) to ensure proper scaling and layout for printing.
 
   return `
     @page {
@@ -2905,4 +3145,4 @@ function getPageCss(printMode: PrintMode) {
       margin: 0;
     }
   `;
-} 
+}
