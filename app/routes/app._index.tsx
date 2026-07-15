@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
 import { authenticate } from "../shopify.server";
 
@@ -106,9 +106,6 @@ export const loader = async ({ request }: { request: Request }) => {
                   email
                   phone
 
-                  packingInstructionsMetafield: metafield(namespace: "custom", key: "packing_instructions") {
-                    value
-                  }
                 }
 
                 shippingAddress {
@@ -400,17 +397,7 @@ export const loader = async ({ request }: { request: Request }) => {
         "box-preference",
       ]);
 
-      const packingInstructions =
-        order.customer?.packingInstructionsMetafield?.value ||
-        order.orderPackingInstructionsMetafield?.value ||
-        getOrderValue(order, "Packing Instructions", [
-          "Packing Instructions",
-          "packing_instructions",
-          "packingInstructions",
-          "packing-instructions",
-          "Instructions",
-          "instruction",
-        ]);
+      const packingInstructions = getCurrentOrderPackingInstructions(order);
 
       const lineItems: LineItem[] =
         order.lineItems?.edges?.map((lineEdge: any) => {
@@ -487,12 +474,30 @@ export const loader = async ({ request }: { request: Request }) => {
 export default function Index() {
   const { orders } = useLoaderData() as { orders: Order[] };
   const revalidator = useRevalidator();
+  const refreshWasLoading = useRef(false);
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [ordersLimit, setOrdersLimit] = useState("20");
   const [printMode, setPrintMode] = useState<PrintMode>("labels");
   const [deliveryDateSearch, setDeliveryDateSearch] = useState("");
   const [routeCourierFilter, setRouteCourierFilter] = useState<"all" | "local" | "courier">("all");
+  const [pendingAction, setPendingAction] = useState<"print" | "word" | null>(null);
+
+  useEffect(() => {
+    const refreshOrders = () => {
+      if (revalidator.state === "idle") {
+        revalidator.revalidate();
+      }
+    };
+
+    const intervalId = window.setInterval(refreshOrders, 30000);
+    window.addEventListener("focus", refreshOrders);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshOrders);
+    };
+  }, [revalidator]);
 
   const filteredOrders = useMemo(() => {
     const search = normalizeSearchText(deliveryDateSearch);
@@ -544,6 +549,31 @@ export default function Index() {
     return orders.filter((order) => order.driverName).length;
   }, [orders]);
 
+  useEffect(() => {
+    if (revalidator.state === "loading") {
+      refreshWasLoading.current = true;
+      return;
+    }
+
+    if (!pendingAction || !refreshWasLoading.current) {
+      return;
+    }
+
+    refreshWasLoading.current = false;
+    const action = pendingAction;
+    setPendingAction(null);
+
+    if (action === "print") {
+      window.setTimeout(() => window.print(), 0);
+      return;
+    }
+
+    void exportSelectedOrdersToWord(selectedOrders, printMode).catch((error) => {
+      console.error("Word export failed:", error);
+      alert("Word export failed. Please check the console/logs and try again.");
+    });
+  }, [pendingAction, printMode, revalidator.state, selectedOrders]);
+
   const toggleOrder = (orderId: string) => {
     setSelectedIds((current) =>
       current.includes(orderId)
@@ -560,16 +590,22 @@ export default function Index() {
     }
   };
 
+  const refreshThenRun = (action: "print" | "word") => {
+    refreshWasLoading.current = false;
+    setPendingAction(action);
+    revalidator.revalidate();
+  };
+
   const handlePrint = () => {
     if (selectedOrders.length === 0) {
       alert("Please select at least one order.");
       return;
     }
 
-    window.print();
+    refreshThenRun("print");
   };
 
-  const handleExportWord = async () => {
+  const handleExportWord = () => {
     if (selectedOrders.length === 0) {
       alert("Please select at least one order.");
       return;
@@ -584,12 +620,7 @@ export default function Index() {
       return;
     }
 
-    try {
-      await exportSelectedOrdersToWord(selectedOrders, printMode);
-    } catch (error) {
-      console.error("Word export failed:", error);
-      alert("Word export failed. Please check the console/logs and try again.");
-    }
+    refreshThenRun("word");
   };
 
   const printButtonLabel = getPrintButtonLabel(printMode);
@@ -1315,18 +1346,6 @@ export default function Index() {
             </div>
 
             <div className="header-actions">
-              <button
-                className="button-secondary"
-                type="button"
-                onClick={() => {
-                  setSelectedIds([]);
-                  revalidator.revalidate();
-                }}
-                disabled={revalidator.state === "loading"}
-              >
-                {revalidator.state === "loading" ? "Refreshing..." : "Refresh Shopify Orders"}
-              </button>
-
               <select
                 className="select-box template-select"
                 value={printMode}
@@ -1338,6 +1357,15 @@ export default function Index() {
                 <option value="courierPackingSlip">Packing Slip - Courier Orders</option>
                 <option value="checklist">Checklist</option>
               </select>
+
+              <button
+                className="button-secondary"
+                type="button"
+                onClick={() => revalidator.revalidate()}
+                disabled={revalidator.state === "loading"}
+              >
+                {revalidator.state === "loading" ? "Refreshing..." : "Refresh Shopify Orders"}
+              </button>
 
               {showWordExportButton ? (
                 <button className="button-secondary" type="button" onClick={handleExportWord}>
@@ -1930,10 +1958,6 @@ function getLineItemQuantity(item: LineItem) {
   return Number(item.currentQuantity ?? 0);
 }
 
-function getActiveLineItems(lineItems: LineItem[]) {
-  return lineItems.filter((item) => getLineItemQuantity(item) > 0);
-}
-
 function getLineItemDisplayName(item: LineItem) {
   return cleanLineItemName(item.productName || item.title || "");
 }
@@ -2446,7 +2470,7 @@ function isPackingSlipExcludedParentItem(item: LineItem) {
 }
 
 function groupLineItems(lineItems: LineItem[]) {
-  const activeLineItems = getActiveLineItems(lineItems);
+  const activeLineItems = lineItems.filter((item) => getLineItemQuantity(item) > 0);
 
   const groups = activeLineItems.reduce(
     (groupedItems, item) => {
@@ -2789,6 +2813,36 @@ function parseDriverFromEasyRoutesRoute(route: string) {
   }
 
   return possibleDriver;
+}
+
+function getCurrentOrderPackingInstructions(order: {
+  customAttributes?: CustomAttribute[];
+  note?: string;
+  orderPackingInstructionsMetafield?: { value?: string | null } | null;
+}) {
+  const orderNote = (order.note || "").trim();
+  const orderMetafieldValue =
+    (order.orderPackingInstructionsMetafield?.value || "").trim();
+  const orderAttributeValue = getCustomValue(order.customAttributes || [], [
+    "Packing Instructions",
+    "packing_instructions",
+    "packingInstructions",
+    "packing-instructions",
+    "Instructions",
+    "instruction",
+  ]).trim();
+
+  const values = [orderNote, orderMetafieldValue, orderAttributeValue].filter(Boolean);
+
+  return values.filter((value, index) => {
+    const normalizedValue = normalizeSearchText(value);
+    return (
+      normalizedValue &&
+      values.findIndex(
+        (candidate) => normalizeSearchText(candidate) === normalizedValue,
+      ) === index
+    );
+  }).join(" - ");
 }
 
 function getOrderValue(
