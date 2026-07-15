@@ -1342,14 +1342,6 @@ export default function Index() {
                 <option value="checklist">Checklist</option>
               </select>
 
-              <button
-                className="button-secondary"
-                type="button"
-                onClick={() => revalidator.revalidate()}
-                disabled={revalidator.state === "loading"}
-              >
-                {revalidator.state === "loading" ? "Refreshing..." : "Refresh Shopify Orders"}
-              </button>
 
               {showWordExportButton ? (
                 <button className="button-secondary" type="button" onClick={handleExportWord}>
