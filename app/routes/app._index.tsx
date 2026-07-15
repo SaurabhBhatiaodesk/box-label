@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useLoaderData } from "react-router";
+import { useLoaderData, useRevalidator } from "react-router";
 import { authenticate } from "../shopify.server";
 
 const LOGO_URL =
@@ -486,6 +486,7 @@ export const loader = async ({ request }: { request: Request }) => {
 
 export default function Index() {
   const { orders } = useLoaderData() as { orders: Order[] };
+  const revalidator = useRevalidator();
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [ordersLimit, setOrdersLimit] = useState("20");
@@ -1314,6 +1315,18 @@ export default function Index() {
             </div>
 
             <div className="header-actions">
+              <button
+                className="button-secondary"
+                type="button"
+                onClick={() => {
+                  setSelectedIds([]);
+                  revalidator.revalidate();
+                }}
+                disabled={revalidator.state === "loading"}
+              >
+                {revalidator.state === "loading" ? "Refreshing..." : "Refresh Shopify Orders"}
+              </button>
+
               <select
                 className="select-box template-select"
                 value={printMode}
@@ -1914,7 +1927,11 @@ function isChecklistExcludedParentItem(item: LineItem) {
 }
 
 function getLineItemQuantity(item: LineItem) {
-  return item.currentQuantity || item.unfulfilledQuantity || item.quantity || 0;
+  return Number(item.currentQuantity ?? 0);
+}
+
+function getActiveLineItems(lineItems: LineItem[]) {
+  return lineItems.filter((item) => getLineItemQuantity(item) > 0);
 }
 
 function getLineItemDisplayName(item: LineItem) {
@@ -2429,7 +2446,9 @@ function isPackingSlipExcludedParentItem(item: LineItem) {
 }
 
 function groupLineItems(lineItems: LineItem[]) {
-  const groups = lineItems.reduce(
+  const activeLineItems = getActiveLineItems(lineItems);
+
+  const groups = activeLineItems.reduce(
     (groupedItems, item) => {
       if (isSeasonalBoxLineItem(item)) {
         return groupedItems;
