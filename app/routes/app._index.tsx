@@ -483,22 +483,6 @@ export default function Index() {
   const [routeCourierFilter, setRouteCourierFilter] = useState<"all" | "local" | "courier">("all");
   const [pendingAction, setPendingAction] = useState<"print" | "word" | null>(null);
 
-  useEffect(() => {
-    const refreshOrders = () => {
-      if (revalidator.state === "idle") {
-        revalidator.revalidate();
-      }
-    };
-
-    const intervalId = window.setInterval(refreshOrders, 30000);
-    window.addEventListener("focus", refreshOrders);
-
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", refreshOrders);
-    };
-  }, [revalidator]);
-
   const filteredOrders = useMemo(() => {
     const search = normalizeSearchText(deliveryDateSearch);
 
@@ -2671,30 +2655,11 @@ function formatBoxLabelAddress(order: Order) {
 }
 
 function formatBoxPreferencePackingInstructions(order: Order) {
-  const allowedBoxPreference = getAllowedBoxPreference(order.boxPreference);
-
-  return [allowedBoxPreference, order.packingInstructions]
-    .filter(Boolean)
-    .join(" - ");
+  return order.packingInstructions?.trim() || "";
 }
 
 function getBoxPreferencePackingInstructionsLabel(order: Order) {
-  const allowedBoxPreference = getAllowedBoxPreference(order.boxPreference);
-  const hasPackingInstructions = Boolean(order.packingInstructions?.trim());
-
-  if (allowedBoxPreference && hasPackingInstructions) {
-    return "Box Preference - Packing Instructions";
-  }
-
-  if (allowedBoxPreference) {
-    return "Box Preference";
-  }
-
-  if (hasPackingInstructions) {
-    return "Packing Instructions";
-  }
-
-  return "";
+  return order.packingInstructions?.trim() ? "Packing Instructions" : "";
 }
 
 function getAllowedBoxPreference(value: string) {
