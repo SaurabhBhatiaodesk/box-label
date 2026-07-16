@@ -3009,38 +3009,12 @@ function parseDriverFromEasyRoutesRoute(route: string) {
 }
 
 function getCurrentOrderPackingInstructions(order: {
-  customAttributes?: CustomAttribute[];
-  note?: string;
   orderPackingInstructionsMetafield?: { value?: string | null } | null;
 }) {
-  const orderNote = (order.note || "").trim();
-  const orderMetafieldValue = (
-    order.orderPackingInstructionsMetafield?.value || ""
-  ).trim();
-  const orderAttributeValue = getCustomValue(order.customAttributes || [], [
-    "Packing Instructions",
-    "packing_instructions",
-    "packingInstructions",
-    "packing-instructions",
-    "Instructions",
-    "instruction",
-  ]).trim();
-
-  const values = [orderNote, orderMetafieldValue, orderAttributeValue].filter(
-    Boolean,
-  );
-
-  return values
-    .filter((value, index) => {
-      const normalizedValue = normalizeSearchText(value);
-      return (
-        normalizedValue &&
-        values.findIndex(
-          (candidate) => normalizeSearchText(candidate) === normalizedValue,
-        ) === index
-      );
-    })
-    .join(" - ");
+  // The checklist and packing slips must use only the current order-level
+  // custom.packing_instructions metafield. Do not fall back to order notes,
+  // cart/order attributes, customer metafields, or Box Preference.
+  return (order.orderPackingInstructionsMetafield?.value || "").trim();
 }
 
 function getOrderValue(
