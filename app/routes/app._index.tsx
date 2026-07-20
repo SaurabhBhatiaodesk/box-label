@@ -1720,10 +1720,8 @@ function PackingSlipsPrint({
     <>
       {orders.map((order) => {
         const groups = getPackingSlipLineItemGroups(order.lineItems);
-        const packingInstructionsText =
-          formatBoxPreferencePackingInstructions(order);
-        const packingInstructionsLabel =
-          getBoxPreferencePackingInstructionsLabel(order);
+        const packingInstructionsText = order.packingInstructions || "";
+        const packingInstructionsLabel = "Packing Instructions";
         const packingRouteDriverDateText =
           formatPackingSlipRouteDriverDate(order);
 
@@ -1888,7 +1886,7 @@ function ChecklistPrint({ orders }: { orders: Order[] }) {
                   </div>
                 </td>
                 <td>{formatDriverPickupDetails(order)}</td>
-                <td>{formatBoxPreferencePackingInstructions(order)}</td>
+                <td>{order.packingInstructions || ""}</td>
                 <td>
                   <ChecklistItemLines
                     items={checklistGroups.groceries}
@@ -2205,11 +2203,11 @@ function createPackingSlipsWordDocument(
             size: PACKING_SLIP_WORD_FONT_SIZE,
             spacingAfter: 120,
           }),
-          ...(formatBoxPreferencePackingInstructions(order)
+          ...(order.packingInstructions
             ? [
                 createWordParagraph(
                   docx,
-                  `${getBoxPreferencePackingInstructionsLabel(order)}: ${formatBoxPreferencePackingInstructions(order)}`,
+                  `Packing Instructions: ${order.packingInstructions}`,
                   {
                     italics: true,
                     size: PACKING_SLIP_WORD_FONT_SIZE,
@@ -2353,9 +2351,7 @@ function createChecklistWordDocument(
                     ),
                     createWordCell(
                       docx,
-                      splitWordLines(
-                        formatBoxPreferencePackingInstructions(order),
-                      ),
+                      splitWordLines(order.packingInstructions || ""),
                       { width: 18 },
                     ),
                     createWordChecklistItemsCell(
@@ -2874,14 +2870,6 @@ function formatShippingAddress(order: Order) {
 
 function formatBoxLabelAddress(order: Order) {
   return [order.address, order.city].filter(Boolean).join(", ");
-}
-
-function formatBoxPreferencePackingInstructions(order: Order) {
-  return order.packingInstructions?.trim() || "";
-}
-
-function getBoxPreferencePackingInstructionsLabel(order: Order) {
-  return order.packingInstructions?.trim() ? "Packing Instructions" : "";
 }
 
 function getAllowedBoxPreference(value: string) {
