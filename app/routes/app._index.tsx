@@ -131,6 +131,10 @@ export const loader = async ({ request }: { request: Request }) => {
                   value
                 }
 
+                orderDeliveryInstructionsMetafield: metafield(namespace: "custom", key: "delivery_instructions") {
+                  value
+                }
+
                 lineItems(first: 100) {
                   edges {
                     node {
@@ -2998,11 +3002,19 @@ function parseDriverFromEasyRoutesRoute(route: string) {
 
 function getCurrentOrderPackingInstructions(order: {
   orderPackingInstructionsMetafield?: { value?: string | null } | null;
+  orderDeliveryInstructionsMetafield?: { value?: string | null } | null;
 }) {
-  // The checklist and packing slips must use only the current order-level
-  // custom.packing_instructions metafield. Do not fall back to order notes,
-  // cart/order attributes, customer metafields, or Box Preference.
-  return (order.orderPackingInstructionsMetafield?.value || "").trim();
+  const packingInstructions = (
+    order.orderPackingInstructionsMetafield?.value || ""
+  ).trim();
+
+  const deliveryInstructions = (
+    order.orderDeliveryInstructionsMetafield?.value || ""
+  ).trim();
+
+  return [packingInstructions, deliveryInstructions]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function getOrderValue(
@@ -3099,12 +3111,12 @@ function getPageCss(printMode: PrintMode) {
       }
     `;
   }
-  // page size for box labels is set in the CSS file (box-labels.css) to ensure proper scaling and layout for printing.
+  // page size for box labels is set in the CSS file (box-labels.css) to ensure proper scaling and layout for printing. for
 
   return `
     @page {
       size: A4 portrait;
       margin: 0;
-    }
+    } 
   `;
 }
