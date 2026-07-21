@@ -74,6 +74,7 @@ type Order = {
   easyRoutesStopEta: string;
   driverName: string;
   boxPreference: string;
+  deliveryInstructions: string;
   packingInstructions: string;
   lineItems: LineItem[];
 };
@@ -127,11 +128,11 @@ export const loader = async ({ request }: { request: Request }) => {
                   value
                 }
 
-                orderPackingInstructionsMetafield: metafield(namespace: "custom", key: "packing_instructions") {
+                orderDeliveryInstructionsMetafield: metafield(namespace: "custom", key: "delivery_instructions") {
                   value
                 }
 
-                orderDeliveryInstructionsMetafield: metafield(namespace: "custom", key: "delivery_instructions") {
+                orderPackingInstructionsMetafield: metafield(namespace: "custom", key: "packing_instructions") {
                   value
                 }
 
@@ -428,6 +429,7 @@ export const loader = async ({ request }: { request: Request }) => {
         "box-preference",
       ]);
 
+      const deliveryInstructions = getCurrentOrderDeliveryInstructions(order);
       const packingInstructions = getCurrentOrderPackingInstructions(order);
 
       const lineItems: LineItem[] =
@@ -496,6 +498,7 @@ export const loader = async ({ request }: { request: Request }) => {
         easyRoutesStopEta,
         driverName,
         boxPreference,
+        deliveryInstructions,
         packingInstructions,
         lineItems,
       };
@@ -2912,7 +2915,12 @@ function formatPackingSlipRouteDriverDate(order: Order) {
 }
 
 function formatDriverPickupDetails(order: Order) {
-  return [order.driverName, order.pickupDetails, order.pickupLocationCompany]
+  return [
+    order.driverName,
+    order.pickupDetails,
+    order.pickupLocationCompany,
+    order.deliveryInstructions,
+  ]
     .filter(Boolean)
     .join("\n");
 }
@@ -3000,21 +3008,20 @@ function parseDriverFromEasyRoutesRoute(route: string) {
   return possibleDriver;
 }
 
-function getCurrentOrderPackingInstructions(order: {
-  orderPackingInstructionsMetafield?: { value?: string | null } | null;
+function getCurrentOrderDeliveryInstructions(order: {
   orderDeliveryInstructionsMetafield?: { value?: string | null } | null;
 }) {
-  const packingInstructions = (
-    order.orderPackingInstructionsMetafield?.value || ""
-  ).trim();
+  // Delivery Instructions belong only in the Driver/Pickup Details column.
+  return (order.orderDeliveryInstructionsMetafield?.value || "").trim();
+}
 
-  const deliveryInstructions = (
-    order.orderDeliveryInstructionsMetafield?.value || ""
-  ).trim();
-
-  return [packingInstructions, deliveryInstructions]
-    .filter(Boolean)
-    .join("\n");
+function getCurrentOrderPackingInstructions(order: {
+  orderPackingInstructionsMetafield?: { value?: string | null } | null;
+}) {
+  // The checklist and packing slips must use only the current order-level
+  // custom.packing_instructions metafield. Do not fall back to order notes,
+  // cart/order attributes, customer metafields, or Box Preference.
+  return (order.orderPackingInstructionsMetafield?.value || "").trim();
 }
 
 function getOrderValue(
@@ -3111,12 +3118,12 @@ function getPageCss(printMode: PrintMode) {
       }
     `;
   }
-  // page size for box labels is set in the CSS file (box-labels.css) to ensure proper scaling and layout for printing. for
+  // page size for box labels is set in the CSS file (box-labels.css) to ensure proper scaling and layout for printing.
 
   return `
     @page {
       size: A4 portrait;
       margin: 0;
-    } 
+    }
   `;
 }
