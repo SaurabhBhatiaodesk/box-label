@@ -2915,14 +2915,7 @@ function formatPackingSlipRouteDriverDate(order: Order) {
 }
 
 function formatDriverPickupDetails(order: Order) {
-  return [
-    order.driverName,
-    order.pickupDetails,
-    order.pickupLocationCompany,
-    order.deliveryInstructions,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  return order.deliveryInstructions?.trim() || "";
 }
 
 function getChecklistDeliveryDateLabel(orders: Order[]) {
@@ -3011,16 +3004,12 @@ function parseDriverFromEasyRoutesRoute(route: string) {
 function getCurrentOrderDeliveryInstructions(order: {
   orderDeliveryInstructionsMetafield?: { value?: string | null } | null;
 }) {
-  // Delivery Instructions belong only in the Driver/Pickup Details column.
   return (order.orderDeliveryInstructionsMetafield?.value || "").trim();
 }
 
 function getCurrentOrderPackingInstructions(order: {
   orderPackingInstructionsMetafield?: { value?: string | null } | null;
 }) {
-  // The checklist and packing slips must use only the current order-level
-  // custom.packing_instructions metafield. Do not fall back to order notes,
-  // cart/order attributes, customer metafields, or Box Preference.
   return (order.orderPackingInstructionsMetafield?.value || "").trim();
 }
 
