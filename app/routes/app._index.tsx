@@ -2915,7 +2915,9 @@ function formatPackingSlipRouteDriverDate(order: Order) {
 }
 
 function formatDriverPickupDetails(order: Order) {
-  return order.deliveryInstructions?.trim() || "";
+  return [order.driverName, order.pickupDetails, order.pickupLocationCompany]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function getChecklistDeliveryDateLabel(orders: Order[]) {
