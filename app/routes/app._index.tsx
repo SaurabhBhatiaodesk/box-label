@@ -1727,8 +1727,8 @@ function PackingSlipsPrint({
     <>
       {orders.map((order) => {
         const groups = getPackingSlipLineItemGroups(order.lineItems);
-        const packingInstructionsText = order.packingInstructions || "";
-        const packingInstructionsLabel = "Packing Instructions";
+        const packingInstructionsText = order.boxPreference || "";
+        const packingInstructionsLabel = "Box Preference";
         const packingRouteDriverDateText =
           formatPackingSlipRouteDriverDate(order);
 
@@ -2210,11 +2210,11 @@ function createPackingSlipsWordDocument(
             size: PACKING_SLIP_WORD_FONT_SIZE,
             spacingAfter: 120,
           }),
-          ...(order.packingInstructions
+          ...(order.boxPreference
             ? [
                 createWordParagraph(
                   docx,
-                  `Packing Instructions: ${order.packingInstructions}`,
+                  `Box Preference: ${order.boxPreference}`,
                   {
                     italics: true,
                     size: PACKING_SLIP_WORD_FONT_SIZE,
@@ -2915,9 +2915,7 @@ function formatPackingSlipRouteDriverDate(order: Order) {
 }
 
 function formatDriverPickupDetails(order: Order) {
-  return [order.driverName, order.pickupDetails, order.pickupLocationCompany]
-    .filter(Boolean)
-    .join("\n");
+  return order.driverName?.trim() || "";
 }
 
 function getChecklistDeliveryDateLabel(orders: Order[]) {
