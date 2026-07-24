@@ -1967,10 +1967,21 @@ function ChecklistGroupedItemLines({
 }
 
 function getChecklistVisibleOrders(orders: Order[]) {
-  return orders.filter((order) => {
-    const groups = groupLineItems(order.lineItems);
-    return hasChecklistVisibleItems(groups);
-  });
+  return orders
+    .filter((order) => {
+      const groups = groupLineItems(order.lineItems);
+      return hasChecklistVisibleItems(groups);
+    })
+    .sort((firstOrder, secondOrder) =>
+      (firstOrder.customerName || "").localeCompare(
+        secondOrder.customerName || "",
+        undefined,
+        {
+          sensitivity: "base",
+          numeric: true,
+        },
+      ),
+    );
 }
 
 function hasChecklistVisibleItems(groups: ReturnType<typeof groupLineItems>) {
