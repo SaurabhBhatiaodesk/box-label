@@ -7,7 +7,7 @@ const LOGO_URL =
 
 const SUPPORT_PHONE = "0480 079 218";
 const PACKING_SLIP_WORD_FONT_SIZE = 21;
-const ORDERS_FETCH_LIMIT = 1000;
+const ORDERS_FETCH_LIMIT = 1500;
 const ORDERS_PAGE_SIZE = 100;
 
 type PrintMode =
