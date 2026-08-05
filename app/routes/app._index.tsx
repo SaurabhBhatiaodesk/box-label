@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useLoaderData, useRevalidator } from "react-router";
+import { useMemo, useState } from "react";
+import { useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 
 const LOGO_URL =
@@ -8,7 +8,8 @@ const LOGO_URL =
 const SUPPORT_PHONE = "0480 079 218";
 const PACKING_SLIP_WORD_FONT_SIZE = 21;
 const ORDERS_FETCH_LIMIT = 1500;
-const ORDERS_PAGE_SIZE = 100;
+const ORDERS_PAGE_SIZE = 250;
+const ORDER_DETAILS_BATCH_SIZE = 20;
 
 type PrintMode =
   | "labels"
@@ -126,36 +127,6 @@ export const loader = async ({ request }: { request: Request }) => {
                 customAttributes {
                   key
                   value
-                }
-
-                orderDeliveryInstructionsMetafield: metafield(namespace: "custom", key: "delivery_instructions") {
-                  value
-                }
-
-                orderPackingInstructionsMetafield: metafield(namespace: "custom", key: "packing_instructions") {
-                  value
-                }
-
-                lineItems(first: 100) {
-                  edges {
-                    node {
-                      id
-                      name
-                      title
-                      quantity
-                      currentQuantity
-                      unfulfilledQuantity
-                      variantTitle
-                      variant {
-                        sku
-                      }
-                      product {
-                        title
-                        productType
-                        tags
-                      }
-                    }
-                  }
                 }
               }
             }
@@ -507,38 +478,174 @@ export const loader = async ({ request }: { request: Request }) => {
   return { orders };
 };
 
+export const action = async ({ request }: { request: Request }) => {
+  const { admin } = await authenticate.admin(request);
+
+  let payload: { orderIds?: unknown } = {};
+
+  try {
+    payload = await request.json();
+  } catch {
+    return Response.json(
+      { error: "Invalid request body." },
+      { status: 400 },
+    );
+  }
+
+  const orderIds = Array.isArray(payload.orderIds)
+    ? payload.orderIds.filter(
+        (orderId): orderId is string =>
+          typeof orderId === "string" && orderId.trim().length > 0,
+      )
+    : [];
+
+  if (orderIds.length === 0) {
+    return Response.json({ orders: [] });
+  }
+
+  const uniqueOrderIds = Array.from(new Set(orderIds)).slice(
+    0,
+    ORDERS_FETCH_LIMIT,
+  );
+
+  const detailedOrders: Array<
+    Pick<
+      Order,
+      | "id"
+      | "note"
+      | "boxPreference"
+      | "pickupLocationCompany"
+      | "deliveryInstructions"
+      | "packingInstructions"
+      | "lineItems"
+    >
+  > = [];
+
+  for (const orderIdBatch of chunkArray(
+    uniqueOrderIds,
+    ORDER_DETAILS_BATCH_SIZE,
+  )) {
+    const response = await admin.graphql(
+      `#graphql
+        query GetSelectedOrderDetails($ids: [ID!]!) {
+          nodes(ids: $ids) {
+            ... on Order {
+              id
+              note
+
+              customAttributes {
+                key
+                value
+              }
+
+              orderDeliveryInstructionsMetafield: metafield(namespace: "custom", key: "delivery_instructions") {
+                value
+              }
+
+              orderPackingInstructionsMetafield: metafield(namespace: "custom", key: "packing_instructions") {
+                value
+              }
+
+              lineItems(first: 100) {
+                edges {
+                  node {
+                    id
+                    name
+                    title
+                    quantity
+                    currentQuantity
+                    unfulfilledQuantity
+                    variantTitle
+                    variant {
+                      sku
+                    }
+                    product {
+                      title
+                      productType
+                      tags
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      `,
+      {
+        variables: {
+          ids: orderIdBatch,
+        },
+      },
+    );
+
+    const data = await response.json();
+
+    if (data?.errors) {
+      console.error(
+        "Shopify selected-order GraphQL errors:",
+        JSON.stringify(data.errors, null, 2),
+      );
+
+      return Response.json(
+        { error: "Unable to load the selected order details." },
+        { status: 502 },
+      );
+    }
+
+    const nodes = (data?.data?.nodes || []).filter(Boolean);
+
+    for (const order of nodes) {
+      const lineItems: LineItem[] =
+        order.lineItems?.edges?.map((lineEdge: any) => {
+          const item = lineEdge.node;
+
+          return {
+            id: item.id,
+            title: item.title || item.product?.title || "",
+            productName: cleanLineItemName(
+              item.name || item.title || item.product?.title || "",
+            ),
+            quantity: Number(item.quantity || 0),
+            currentQuantity: Number(item.currentQuantity || 0),
+            unfulfilledQuantity: Number(item.unfulfilledQuantity || 0),
+            variantTitle: item.variantTitle || "",
+            sku: item.variant?.sku || "",
+            productType: item.product?.productType || "",
+            tags: item.product?.tags || [],
+          };
+        }) || [];
+
+      detailedOrders.push({
+        id: order.id,
+        note: order.note || "",
+        boxPreference: getOrderValue(order, "Box Preference", [
+          "Box Preference",
+          "box_preference",
+          "boxPreference",
+          "box-preference",
+        ]),
+        pickupLocationCompany: getOrderValue(
+          order,
+          "Pickup-Location-Company",
+          [
+            "Pickup-Location-Company",
+            "Pickup Location Company",
+            "pickup_location_company",
+            "pickupLocationCompany",
+          ],
+        ),
+        deliveryInstructions: getCurrentOrderDeliveryInstructions(order),
+        packingInstructions: getCurrentOrderPackingInstructions(order),
+        lineItems,
+      });
+    }
+  }
+
+  return Response.json({ orders: detailedOrders });
+};
+
 export default function Index() {
   const { orders } = useLoaderData() as { orders: Order[] };
-  const revalidator = useRevalidator();
-  const lastSilentRefreshRef = useRef(0);
-
-  useEffect(() => {
-    const refreshSilently = () => {
-      const now = Date.now();
-
-      // Avoid repeated requests when Shopify/admin focus events fire multiple times.
-      if (now - lastSilentRefreshRef.current < 15000) {
-        return;
-      }
-
-      lastSilentRefreshRef.current = now;
-      revalidator.revalidate();
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        refreshSilently();
-      }
-    };
-
-    window.addEventListener("focus", refreshSilently);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      window.removeEventListener("focus", refreshSilently);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [revalidator]);
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [ordersLimit, setOrdersLimit] = useState("20");
@@ -547,6 +654,8 @@ export default function Index() {
   const [routeCourierFilter, setRouteCourierFilter] = useState<
     "all" | "local" | "courier"
   >("all");
+  const [printOrders, setPrintOrders] = useState<Order[]>([]);
+  const [isPreparingPrint, setIsPreparingPrint] = useState(false);
 
   const filteredOrders = useMemo(() => {
     const search = normalizeSearchText(deliveryDateSearch);
@@ -614,13 +723,83 @@ export default function Index() {
     }
   };
 
-  const handlePrint = () => {
+  const loadLatestSelectedOrderDetails = async () => {
+    const requiresDetailedOrders =
+      printMode === "localPackingSlip" ||
+      printMode === "courierPackingSlip" ||
+      printMode === "checklist";
+
+    if (!requiresDetailedOrders) {
+      return selectedOrders;
+    }
+
+    const response = await fetch(
+      `${window.location.pathname}${window.location.search}`,
+      {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          orderIds: selectedOrders.map((order) => order.id),
+        }),
+      },
+    );
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        data?.error || `Unable to load order details (${response.status}).`,
+      );
+    }
+
+    const detailsByOrderId = new Map<string, Partial<Order>>(
+      (data?.orders || []).map((order: Partial<Order> & { id: string }) => [
+        order.id,
+        order,
+      ]),
+    );
+
+    return selectedOrders.map((order) => ({
+      ...order,
+      ...(detailsByOrderId.get(order.id) || {}),
+      lineItems:
+        detailsByOrderId.get(order.id)?.lineItems || order.lineItems || [],
+    }));
+  };
+
+  const handlePrint = async () => {
     if (selectedOrders.length === 0) {
       alert("Please select at least one order.");
       return;
     }
 
-    window.print();
+    setIsPreparingPrint(true);
+
+    try {
+      const latestOrders = await loadLatestSelectedOrderDetails();
+      setPrintOrders(latestOrders);
+
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => resolve());
+        });
+      });
+
+      window.print();
+    } catch (error) {
+      console.error("Print preparation failed:", error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Unable to prepare the selected orders for printing.",
+      );
+    } finally {
+      setIsPreparingPrint(false);
+    }
   };
 
   const handleExportWord = async () => {
@@ -638,11 +817,20 @@ export default function Index() {
       return;
     }
 
+    setIsPreparingPrint(true);
+
     try {
-      await exportSelectedOrdersToWord(selectedOrders, printMode);
+      const latestOrders = await loadLatestSelectedOrderDetails();
+      await exportSelectedOrdersToWord(latestOrders, printMode);
     } catch (error) {
       console.error("Word export failed:", error);
-      alert("Word export failed. Please check the console/logs and try again.");
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Word export failed. Please try again.",
+      );
+    } finally {
+      setIsPreparingPrint(false);
     }
   };
 
@@ -840,6 +1028,12 @@ export default function Index() {
 
         .button:hover {
           background: #111827;
+        }
+
+        .button:disabled,
+        .button-secondary:disabled {
+          cursor: wait;
+          opacity: 0.65;
         }
 
         .button-secondary {
@@ -1395,13 +1589,18 @@ export default function Index() {
                   className="button-secondary"
                   type="button"
                   onClick={handleExportWord}
+                  disabled={isPreparingPrint}
                 >
-                  Export to Word
+                  {isPreparingPrint ? "Preparing..." : "Export to Word"}
                 </button>
               ) : null}
 
-              <button className="button" onClick={handlePrint}>
-                {printButtonLabel}
+              <button
+                className="button"
+                onClick={handlePrint}
+                disabled={isPreparingPrint}
+              >
+                {isPreparingPrint ? "Preparing..." : printButtonLabel}
               </button>
             </div>
           </div>
@@ -1636,23 +1835,23 @@ export default function Index() {
 
       <div className="print-area">
         {printMode === "labels" ? (
-          <LabelsPrint orders={selectedOrders} template="local" />
+          <LabelsPrint orders={printOrders} template="local" />
         ) : null}
 
         {printMode === "courierLabels" ? (
-          <LabelsPrint orders={selectedOrders} template="courier" />
+          <LabelsPrint orders={printOrders} template="courier" />
         ) : null}
 
         {printMode === "localPackingSlip" ? (
-          <PackingSlipsPrint orders={selectedOrders} type="Local Orders" />
+          <PackingSlipsPrint orders={printOrders} type="Local Orders" />
         ) : null}
 
         {printMode === "courierPackingSlip" ? (
-          <PackingSlipsPrint orders={selectedOrders} type="Courier Orders" />
+          <PackingSlipsPrint orders={printOrders} type="Courier Orders" />
         ) : null}
 
         {printMode === "checklist" ? (
-          <ChecklistPrint orders={selectedOrders} />
+          <ChecklistPrint orders={printOrders} />
         ) : null}
       </div>
     </div>
