@@ -2926,7 +2926,10 @@ function formatPackingSlipRouteDriverDate(order: Order) {
 }
 
 function formatDriverPickupDetails(order: Order) {
-  if (normalizeSearchText(order.pickupLocationCompany) === "rocklea") {
+  if (
+    normalizeSearchText(order.pickupLocationCompany) ===
+    normalizeSearchText("Rocklea Pickup")
+  ) {
     return "Rocklea Pickup";
   }
 
