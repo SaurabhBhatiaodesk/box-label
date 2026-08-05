@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 
@@ -8,7 +8,7 @@ const LOGO_URL =
 const SUPPORT_PHONE = "0480 079 218";
 const PACKING_SLIP_WORD_FONT_SIZE = 21;
 const ORDERS_FETCH_LIMIT = 1500;
-const ORDERS_PAGE_SIZE = 250;
+const ORDERS_PAGE_SIZE = 100;
 const ORDER_DETAILS_BATCH_SIZE = 20;
 
 type PrintMode =
@@ -81,16 +81,28 @@ type Order = {
 };
 
 export const loader = async ({ request }: { request: Request }) => {
-  const { admin } = await authenticate.admin(request);
+  await authenticate.admin(request);
+
+  // Render the embedded app immediately. Orders are loaded progressively
+  // from the browser in small authenticated batches, preventing a blank
+  // Shopify iframe while 1,500 orders are being requested.
+  return { orders: [] as Order[] };
+};
+
+async function fetchOrderSummaries(
+  admin: any,
+  maxOrders: number,
+  startingCursor: string | null = null,
+) {
 
   const allEdges: any[] = [];
   let hasNextPage = true;
-  let cursor: string | null = null;
+  let cursor: string | null = startingCursor;
 
-  while (hasNextPage && allEdges.length < ORDERS_FETCH_LIMIT) {
+  while (hasNextPage && allEdges.length < maxOrders) {
     const first = Math.min(
       ORDERS_PAGE_SIZE,
-      ORDERS_FETCH_LIMIT - allEdges.length,
+      maxOrders - allEdges.length,
     );
 
     const response = await admin.graphql(
@@ -475,13 +487,18 @@ export const loader = async ({ request }: { request: Request }) => {
       };
     }) || [];
 
-  return { orders };
-};
+  return { orders, hasNextPage, cursor };
+}
 
 export const action = async ({ request }: { request: Request }) => {
   const { admin } = await authenticate.admin(request);
 
-  let payload: { orderIds?: unknown } = {};
+  let payload: {
+    mode?: unknown;
+    orderIds?: unknown;
+    after?: unknown;
+    remaining?: unknown;
+  } = {};
 
   try {
     payload = await request.json();
@@ -490,6 +507,29 @@ export const action = async ({ request }: { request: Request }) => {
       { error: "Invalid request body." },
       { status: 400 },
     );
+  }
+
+  if (payload.mode === "list") {
+    const after =
+      typeof payload.after === "string" && payload.after.trim()
+        ? payload.after
+        : null;
+
+    const requestedRemaining = Number(payload.remaining);
+    const remaining = Number.isFinite(requestedRemaining)
+      ? Math.max(1, Math.min(ORDERS_FETCH_LIMIT, requestedRemaining))
+      : ORDERS_PAGE_SIZE;
+
+    const pageLimit = Math.min(ORDERS_PAGE_SIZE, remaining);
+    const result = await fetchOrderSummaries(admin, pageLimit, after);
+
+    return Response.json({
+      orders: result.orders,
+      pageInfo: {
+        hasNextPage: result.hasNextPage,
+        endCursor: result.cursor,
+      },
+    });
   }
 
   const orderIds = Array.isArray(payload.orderIds)
@@ -645,8 +685,11 @@ export const action = async ({ request }: { request: Request }) => {
 };
 
 export default function Index() {
-  const { orders } = useLoaderData() as { orders: Order[] };
+  const { orders: initialOrders } = useLoaderData() as { orders: Order[] };
 
+  const [orders, setOrders] = useState<Order[]>(initialOrders || []);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(true);
+  const [ordersLoadError, setOrdersLoadError] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [ordersLimit, setOrdersLimit] = useState("20");
   const [printMode, setPrintMode] = useState<PrintMode>("labels");
@@ -656,6 +699,94 @@ export default function Index() {
   >("all");
   const [printOrders, setPrintOrders] = useState<Order[]>([]);
   const [isPreparingPrint, setIsPreparingPrint] = useState(false);
+
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadOrdersProgressively = async () => {
+      setIsLoadingOrders(true);
+      setOrdersLoadError("");
+
+      const loadedOrders: Order[] = [];
+      let after: string | null = null;
+      let hasNextPage = true;
+
+      try {
+        while (
+          !cancelled &&
+          hasNextPage &&
+          loadedOrders.length < ORDERS_FETCH_LIMIT
+        ) {
+          const previousCursor = after;
+          const remaining = ORDERS_FETCH_LIMIT - loadedOrders.length;
+
+          const response = await fetch(
+            `${window.location.pathname}${window.location.search}`,
+            {
+              method: "POST",
+              credentials: "same-origin",
+              headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                mode: "list",
+                after,
+                remaining,
+              }),
+            },
+          );
+
+          const data = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            throw new Error(
+              data?.error || `Unable to load orders (${response.status}).`,
+            );
+          }
+
+          const pageOrders = Array.isArray(data?.orders) ? data.orders : [];
+          loadedOrders.push(...pageOrders);
+
+          if (!cancelled) {
+            setOrders([...loadedOrders]);
+          }
+
+          hasNextPage = Boolean(data?.pageInfo?.hasNextPage);
+          after = data?.pageInfo?.endCursor || null;
+
+          if (
+            pageOrders.length === 0 ||
+            !after ||
+            after === previousCursor
+          ) {
+            break;
+          }
+        }
+      } catch (error) {
+        console.error("Progressive order loading failed:", error);
+
+        if (!cancelled) {
+          setOrdersLoadError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load orders. Please refresh and try again.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingOrders(false);
+        }
+      }
+    };
+
+    loadOrdersProgressively();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filteredOrders = useMemo(() => {
     const search = normalizeSearchText(deliveryDateSearch);
@@ -743,6 +874,7 @@ export default function Index() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          mode: "details",
           orderIds: selectedOrders.map((order) => order.id),
         }),
       },
@@ -898,6 +1030,24 @@ export default function Index() {
           align-items: center;
           gap: 10px;
           flex-wrap: wrap;
+        }
+
+        .load-notice {
+          margin-bottom: 16px;
+          padding: 12px 14px;
+          border: 1px solid #b4d7ff;
+          border-radius: 10px;
+          background: #eaf4ff;
+          color: #1f5199;
+          font-size: 14px;
+          line-height: 20px;
+          font-weight: 650;
+        }
+
+        .load-notice-error {
+          border-color: #fed3d1;
+          background: #fff4f4;
+          color: #8e1f0b;
         }
 
         .summary-grid {
@@ -1605,6 +1755,16 @@ export default function Index() {
             </div>
           </div>
 
+          {isLoadingOrders ? (
+            <div className="load-notice">
+              Loading orders… {orders.length} of up to {ORDERS_FETCH_LIMIT}
+            </div>
+          ) : ordersLoadError ? (
+            <div className="load-notice load-notice-error">
+              {ordersLoadError}
+            </div>
+          ) : null}
+
           <div className="summary-grid">
             <div className="summary-card">
               <div className="summary-label">Orders loaded</div>
@@ -1650,7 +1810,7 @@ export default function Index() {
                   <option value="50">Show 50 orders</option>
                   <option value="100">Show 100 orders</option>
                   <option value="250">Show 250 orders</option>
-                  <option value="1000">Show all loaded</option>
+                  <option value="1500">Show all loaded</option>
                 </select>
 
                 <button className="button-secondary" onClick={toggleAll}>
