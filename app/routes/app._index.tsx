@@ -85,9 +85,12 @@ export const loader = async ({ request }: { request: Request }) => {
 
   const requestUrl = new URL(request.url);
 
-  // Return the real backend action URL. The Shopify Admin browser URL can
-  // point to admin.shopify.com, which must not be used for POST requests.
-  const actionUrl = `${requestUrl.origin}${requestUrl.pathname}`;
+  // app._index.tsx is the index route for /app. React Router requires the
+  // ?index query parameter so POST requests reach this file's action instead
+  // of the parent app.tsx route. Loader data requests can also use /app.data,
+  // so remove the .data suffix before creating the action URL.
+  const actionPathname = requestUrl.pathname.replace(/\.data$/, "");
+  const actionUrl = `${requestUrl.origin}${actionPathname}?index`;
 
   // Render the embedded app immediately. Orders are loaded progressively
   // from the browser in small authenticated batches, preventing a blank
