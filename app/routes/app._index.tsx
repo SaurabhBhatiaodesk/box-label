@@ -83,10 +83,16 @@ type Order = {
 export const loader = async ({ request }: { request: Request }) => {
   await authenticate.admin(request);
 
+  const requestUrl = new URL(request.url);
+
+  // Return the real backend action URL. The Shopify Admin browser URL can
+  // point to admin.shopify.com, which must not be used for POST requests.
+  const actionUrl = `${requestUrl.origin}${requestUrl.pathname}`;
+
   // Render the embedded app immediately. Orders are loaded progressively
   // from the browser in small authenticated batches, preventing a blank
   // Shopify iframe while 1,500 orders are being requested.
-  return { orders: [] as Order[] };
+  return { orders: [] as Order[], actionUrl };
 };
 
 async function fetchOrderSummaries(
@@ -685,7 +691,10 @@ export const action = async ({ request }: { request: Request }) => {
 };
 
 export default function Index() {
-  const { orders: initialOrders } = useLoaderData() as { orders: Order[] };
+  const { orders: initialOrders, actionUrl } = useLoaderData() as {
+    orders: Order[];
+    actionUrl: string;
+  };
 
   const [orders, setOrders] = useState<Order[]>(initialOrders || []);
   const [isLoadingOrders, setIsLoadingOrders] = useState(true);
@@ -721,22 +730,11 @@ export default function Index() {
           const previousCursor = after;
           const remaining = ORDERS_FETCH_LIMIT - loadedOrders.length;
 
-          const response = await fetch(
-            `${window.location.pathname}${window.location.search}`,
-            {
-              method: "POST",
-              credentials: "same-origin",
-              headers: {
-                Accept: "application/json",
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                mode: "list",
-                after,
-                remaining,
-              }),
-            },
-          );
+          const response = await postAuthenticatedJson(actionUrl, {
+            mode: "list",
+            after,
+            remaining,
+          });
 
           const data = await response.json().catch(() => ({}));
 
@@ -786,7 +784,7 @@ export default function Index() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [actionUrl]);
 
   const filteredOrders = useMemo(() => {
     const search = normalizeSearchText(deliveryDateSearch);
@@ -864,21 +862,10 @@ export default function Index() {
       return selectedOrders;
     }
 
-    const response = await fetch(
-      `${window.location.pathname}${window.location.search}`,
-      {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          mode: "details",
-          orderIds: selectedOrders.map((order) => order.id),
-        }),
-      },
-    );
+    const response = await postAuthenticatedJson(actionUrl, {
+      mode: "details",
+      orderIds: selectedOrders.map((order) => order.id),
+    });
 
     const data = await response.json().catch(() => ({}));
 
@@ -3439,6 +3426,38 @@ function normalizeKey(value: string) {
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+async function postAuthenticatedJson(
+  actionUrl: string,
+  payload: unknown,
+) {
+  const shopifyAppBridge = (
+    window as Window & {
+      shopify?: {
+        idToken?: () => Promise<string>;
+      };
+    }
+  ).shopify;
+
+  if (!shopifyAppBridge?.idToken) {
+    throw new Error(
+      "Shopify authentication is not ready. Please refresh the app and try again.",
+    );
+  }
+
+  const token = await shopifyAppBridge.idToken();
+
+  return fetch(actionUrl, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
 }
 
 function normalizeSearchText(value: string) {
