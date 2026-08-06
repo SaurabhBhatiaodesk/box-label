@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useLoaderData } from "react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLoaderData, useRevalidator } from "react-router";
 import { authenticate } from "../shopify.server";
 
 const LOGO_URL =
@@ -7,9 +7,8 @@ const LOGO_URL =
 
 const SUPPORT_PHONE = "0480 079 218";
 const PACKING_SLIP_WORD_FONT_SIZE = 21;
-const ORDERS_FETCH_LIMIT = 1500;
+const ORDERS_FETCH_LIMIT = 2000;
 const ORDERS_PAGE_SIZE = 100;
-const ORDER_DETAILS_BATCH_SIZE = 20;
 
 type PrintMode =
   | "labels"
@@ -81,37 +80,16 @@ type Order = {
 };
 
 export const loader = async ({ request }: { request: Request }) => {
-  await authenticate.admin(request);
-
-  const requestUrl = new URL(request.url);
-
-  // app._index.tsx is the index route for /app. React Router requires the
-  // ?index query parameter so POST requests reach this file's action instead
-  // of the parent app.tsx route. Loader data requests can also use /app.data,
-  // so remove the .data suffix before creating the action URL.
-  const actionPathname = requestUrl.pathname.replace(/\.data$/, "");
-  const actionUrl = `${requestUrl.origin}${actionPathname}?index`;
-
-  // Render the embedded app immediately. Orders are loaded progressively
-  // from the browser in small authenticated batches, preventing a blank
-  // Shopify iframe while 1,500 orders are being requested.
-  return { orders: [] as Order[], actionUrl };
-};
-
-async function fetchOrderSummaries(
-  admin: any,
-  maxOrders: number,
-  startingCursor: string | null = null,
-) {
+  const { admin } = await authenticate.admin(request);
 
   const allEdges: any[] = [];
   let hasNextPage = true;
-  let cursor: string | null = startingCursor;
+  let cursor: string | null = null;
 
-  while (hasNextPage && allEdges.length < maxOrders) {
+  while (hasNextPage && allEdges.length < ORDERS_FETCH_LIMIT) {
     const first = Math.min(
       ORDERS_PAGE_SIZE,
-      maxOrders - allEdges.length,
+      ORDERS_FETCH_LIMIT - allEdges.length,
     );
 
     const response = await admin.graphql(
@@ -148,6 +126,36 @@ async function fetchOrderSummaries(
                 customAttributes {
                   key
                   value
+                }
+
+                orderDeliveryInstructionsMetafield: metafield(namespace: "custom", key: "delivery_instructions") {
+                  value
+                }
+
+                orderPackingInstructionsMetafield: metafield(namespace: "custom", key: "packing_instructions") {
+                  value
+                }
+
+                lineItems(first: 100) {
+                  edges {
+                    node {
+                      id
+                      name
+                      title
+                      quantity
+                      currentQuantity
+                      unfulfilledQuantity
+                      variantTitle
+                      variant {
+                        sku
+                      }
+                      product {
+                        title
+                        productType
+                        tags
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -496,212 +504,42 @@ async function fetchOrderSummaries(
       };
     }) || [];
 
-  return { orders, hasNextPage, cursor };
-}
-
-export const action = async ({ request }: { request: Request }) => {
-  const { admin } = await authenticate.admin(request);
-
-  let payload: {
-    mode?: unknown;
-    orderIds?: unknown;
-    after?: unknown;
-    remaining?: unknown;
-  } = {};
-
-  try {
-    payload = await request.json();
-  } catch {
-    return Response.json(
-      { error: "Invalid request body." },
-      { status: 400 },
-    );
-  }
-
-  if (payload.mode === "list") {
-    const after =
-      typeof payload.after === "string" && payload.after.trim()
-        ? payload.after
-        : null;
-
-    const requestedRemaining = Number(payload.remaining);
-    const remaining = Number.isFinite(requestedRemaining)
-      ? Math.max(1, Math.min(ORDERS_FETCH_LIMIT, requestedRemaining))
-      : ORDERS_PAGE_SIZE;
-
-    const pageLimit = Math.min(ORDERS_PAGE_SIZE, remaining);
-    const result = await fetchOrderSummaries(admin, pageLimit, after);
-
-    return Response.json({
-      orders: result.orders,
-      pageInfo: {
-        hasNextPage: result.hasNextPage,
-        endCursor: result.cursor,
-      },
-    });
-  }
-
-  const orderIds = Array.isArray(payload.orderIds)
-    ? payload.orderIds.filter(
-        (orderId): orderId is string =>
-          typeof orderId === "string" && orderId.trim().length > 0,
-      )
-    : [];
-
-  if (orderIds.length === 0) {
-    return Response.json({ orders: [] });
-  }
-
-  const uniqueOrderIds = Array.from(new Set(orderIds)).slice(
-    0,
-    ORDERS_FETCH_LIMIT,
-  );
-
-  const detailedOrders: Array<
-    Pick<
-      Order,
-      | "id"
-      | "note"
-      | "boxPreference"
-      | "pickupLocationCompany"
-      | "deliveryInstructions"
-      | "packingInstructions"
-      | "lineItems"
-    >
-  > = [];
-
-  for (const orderIdBatch of chunkArray(
-    uniqueOrderIds,
-    ORDER_DETAILS_BATCH_SIZE,
-  )) {
-    const response = await admin.graphql(
-      `#graphql
-        query GetSelectedOrderDetails($ids: [ID!]!) {
-          nodes(ids: $ids) {
-            ... on Order {
-              id
-              note
-
-              customAttributes {
-                key
-                value
-              }
-
-              orderDeliveryInstructionsMetafield: metafield(namespace: "custom", key: "delivery_instructions") {
-                value
-              }
-
-              orderPackingInstructionsMetafield: metafield(namespace: "custom", key: "packing_instructions") {
-                value
-              }
-
-              lineItems(first: 100) {
-                edges {
-                  node {
-                    id
-                    name
-                    title
-                    quantity
-                    currentQuantity
-                    unfulfilledQuantity
-                    variantTitle
-                    variant {
-                      sku
-                    }
-                    product {
-                      title
-                      productType
-                      tags
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      `,
-      {
-        variables: {
-          ids: orderIdBatch,
-        },
-      },
-    );
-
-    const data = await response.json();
-
-    if (data?.errors) {
-      console.error(
-        "Shopify selected-order GraphQL errors:",
-        JSON.stringify(data.errors, null, 2),
-      );
-
-      return Response.json(
-        { error: "Unable to load the selected order details." },
-        { status: 502 },
-      );
-    }
-
-    const nodes = (data?.data?.nodes || []).filter(Boolean);
-
-    for (const order of nodes) {
-      const lineItems: LineItem[] =
-        order.lineItems?.edges?.map((lineEdge: any) => {
-          const item = lineEdge.node;
-
-          return {
-            id: item.id,
-            title: item.title || item.product?.title || "",
-            productName: cleanLineItemName(
-              item.name || item.title || item.product?.title || "",
-            ),
-            quantity: Number(item.quantity || 0),
-            currentQuantity: Number(item.currentQuantity || 0),
-            unfulfilledQuantity: Number(item.unfulfilledQuantity || 0),
-            variantTitle: item.variantTitle || "",
-            sku: item.variant?.sku || "",
-            productType: item.product?.productType || "",
-            tags: item.product?.tags || [],
-          };
-        }) || [];
-
-      detailedOrders.push({
-        id: order.id,
-        note: order.note || "",
-        boxPreference: getOrderValue(order, "Box Preference", [
-          "Box Preference",
-          "box_preference",
-          "boxPreference",
-          "box-preference",
-        ]),
-        pickupLocationCompany: getOrderValue(
-          order,
-          "Pickup-Location-Company",
-          [
-            "Pickup-Location-Company",
-            "Pickup Location Company",
-            "pickup_location_company",
-            "pickupLocationCompany",
-          ],
-        ),
-        deliveryInstructions: getCurrentOrderDeliveryInstructions(order),
-        packingInstructions: getCurrentOrderPackingInstructions(order),
-        lineItems,
-      });
-    }
-  }
-
-  return Response.json({ orders: detailedOrders });
+  return { orders };
 };
 
 export default function Index() {
-  const { orders: initialOrders, actionUrl } = useLoaderData() as {
-    orders: Order[];
-    actionUrl: string;
-  };
+  const { orders } = useLoaderData() as { orders: Order[] };
+  const revalidator = useRevalidator();
+  const lastSilentRefreshRef = useRef(0);
 
-  const [orders, setOrders] = useState<Order[]>(initialOrders || []);
-  const [isLoadingOrders, setIsLoadingOrders] = useState(true);
-  const [ordersLoadError, setOrdersLoadError] = useState("");
+  useEffect(() => {
+    const refreshSilently = () => {
+      const now = Date.now();
+
+      // Avoid repeated requests when Shopify/admin focus events fire multiple times.
+      if (now - lastSilentRefreshRef.current < 15000) {
+        return;
+      }
+
+      lastSilentRefreshRef.current = now;
+      revalidator.revalidate();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshSilently();
+      }
+    };
+
+    window.addEventListener("focus", refreshSilently);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", refreshSilently);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [revalidator]);
+
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [ordersLimit, setOrdersLimit] = useState("20");
   const [printMode, setPrintMode] = useState<PrintMode>("labels");
@@ -709,85 +547,6 @@ export default function Index() {
   const [routeCourierFilter, setRouteCourierFilter] = useState<
     "all" | "local" | "courier"
   >("all");
-  const [printOrders, setPrintOrders] = useState<Order[]>([]);
-  const [isPreparingPrint, setIsPreparingPrint] = useState(false);
-
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadOrdersProgressively = async () => {
-      setIsLoadingOrders(true);
-      setOrdersLoadError("");
-
-      const loadedOrders: Order[] = [];
-      let after: string | null = null;
-      let hasNextPage = true;
-
-      try {
-        while (
-          !cancelled &&
-          hasNextPage &&
-          loadedOrders.length < ORDERS_FETCH_LIMIT
-        ) {
-          const previousCursor = after;
-          const remaining = ORDERS_FETCH_LIMIT - loadedOrders.length;
-
-          const response = await postAuthenticatedJson(actionUrl, {
-            mode: "list",
-            after,
-            remaining,
-          });
-
-          const data = await response.json().catch(() => ({}));
-
-          if (!response.ok) {
-            throw new Error(
-              data?.error || `Unable to load orders (${response.status}).`,
-            );
-          }
-
-          const pageOrders = Array.isArray(data?.orders) ? data.orders : [];
-          loadedOrders.push(...pageOrders);
-
-          if (!cancelled) {
-            setOrders([...loadedOrders]);
-          }
-
-          hasNextPage = Boolean(data?.pageInfo?.hasNextPage);
-          after = data?.pageInfo?.endCursor || null;
-
-          if (
-            pageOrders.length === 0 ||
-            !after ||
-            after === previousCursor
-          ) {
-            break;
-          }
-        }
-      } catch (error) {
-        console.error("Progressive order loading failed:", error);
-
-        if (!cancelled) {
-          setOrdersLoadError(
-            error instanceof Error
-              ? error.message
-              : "Unable to load orders. Please refresh and try again.",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingOrders(false);
-        }
-      }
-    };
-
-    loadOrdersProgressively();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [actionUrl]);
 
   const filteredOrders = useMemo(() => {
     const search = normalizeSearchText(deliveryDateSearch);
@@ -855,73 +614,13 @@ export default function Index() {
     }
   };
 
-  const loadLatestSelectedOrderDetails = async () => {
-    const requiresDetailedOrders =
-      printMode === "localPackingSlip" ||
-      printMode === "courierPackingSlip" ||
-      printMode === "checklist";
-
-    if (!requiresDetailedOrders) {
-      return selectedOrders;
-    }
-
-    const response = await postAuthenticatedJson(actionUrl, {
-      mode: "details",
-      orderIds: selectedOrders.map((order) => order.id),
-    });
-
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      throw new Error(
-        data?.error || `Unable to load order details (${response.status}).`,
-      );
-    }
-
-    const detailsByOrderId = new Map<string, Partial<Order>>(
-      (data?.orders || []).map((order: Partial<Order> & { id: string }) => [
-        order.id,
-        order,
-      ]),
-    );
-
-    return selectedOrders.map((order) => ({
-      ...order,
-      ...(detailsByOrderId.get(order.id) || {}),
-      lineItems:
-        detailsByOrderId.get(order.id)?.lineItems || order.lineItems || [],
-    }));
-  };
-
-  const handlePrint = async () => {
+  const handlePrint = () => {
     if (selectedOrders.length === 0) {
       alert("Please select at least one order.");
       return;
     }
 
-    setIsPreparingPrint(true);
-
-    try {
-      const latestOrders = await loadLatestSelectedOrderDetails();
-      setPrintOrders(latestOrders);
-
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => resolve());
-        });
-      });
-
-      window.print();
-    } catch (error) {
-      console.error("Print preparation failed:", error);
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Unable to prepare the selected orders for printing.",
-      );
-    } finally {
-      setIsPreparingPrint(false);
-    }
+    window.print();
   };
 
   const handleExportWord = async () => {
@@ -939,20 +638,11 @@ export default function Index() {
       return;
     }
 
-    setIsPreparingPrint(true);
-
     try {
-      const latestOrders = await loadLatestSelectedOrderDetails();
-      await exportSelectedOrdersToWord(latestOrders, printMode);
+      await exportSelectedOrdersToWord(selectedOrders, printMode);
     } catch (error) {
       console.error("Word export failed:", error);
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Word export failed. Please try again.",
-      );
-    } finally {
-      setIsPreparingPrint(false);
+      alert("Word export failed. Please check the console/logs and try again.");
     }
   };
 
@@ -1020,24 +710,6 @@ export default function Index() {
           align-items: center;
           gap: 10px;
           flex-wrap: wrap;
-        }
-
-        .load-notice {
-          margin-bottom: 16px;
-          padding: 12px 14px;
-          border: 1px solid #b4d7ff;
-          border-radius: 10px;
-          background: #eaf4ff;
-          color: #1f5199;
-          font-size: 14px;
-          line-height: 20px;
-          font-weight: 650;
-        }
-
-        .load-notice-error {
-          border-color: #fed3d1;
-          background: #fff4f4;
-          color: #8e1f0b;
         }
 
         .summary-grid {
@@ -1168,12 +840,6 @@ export default function Index() {
 
         .button:hover {
           background: #111827;
-        }
-
-        .button:disabled,
-        .button-secondary:disabled {
-          cursor: wait;
-          opacity: 0.65;
         }
 
         .button-secondary {
@@ -1729,31 +1395,16 @@ export default function Index() {
                   className="button-secondary"
                   type="button"
                   onClick={handleExportWord}
-                  disabled={isPreparingPrint}
                 >
-                  {isPreparingPrint ? "Preparing..." : "Export to Word"}
+                  Export to Word
                 </button>
               ) : null}
 
-              <button
-                className="button"
-                onClick={handlePrint}
-                disabled={isPreparingPrint}
-              >
-                {isPreparingPrint ? "Preparing..." : printButtonLabel}
+              <button className="button" onClick={handlePrint}>
+                {printButtonLabel}
               </button>
             </div>
           </div>
-
-          {isLoadingOrders ? (
-            <div className="load-notice">
-              Loading orders… {orders.length} of up to {ORDERS_FETCH_LIMIT}
-            </div>
-          ) : ordersLoadError ? (
-            <div className="load-notice load-notice-error">
-              {ordersLoadError}
-            </div>
-          ) : null}
 
           <div className="summary-grid">
             <div className="summary-card">
@@ -1800,7 +1451,7 @@ export default function Index() {
                   <option value="50">Show 50 orders</option>
                   <option value="100">Show 100 orders</option>
                   <option value="250">Show 250 orders</option>
-                  <option value="1500">Show all loaded</option>
+                  <option value="1000">Show all loaded</option>
                 </select>
 
                 <button className="button-secondary" onClick={toggleAll}>
@@ -1985,23 +1636,23 @@ export default function Index() {
 
       <div className="print-area">
         {printMode === "labels" ? (
-          <LabelsPrint orders={printOrders} template="local" />
+          <LabelsPrint orders={selectedOrders} template="local" />
         ) : null}
 
         {printMode === "courierLabels" ? (
-          <LabelsPrint orders={printOrders} template="courier" />
+          <LabelsPrint orders={selectedOrders} template="courier" />
         ) : null}
 
         {printMode === "localPackingSlip" ? (
-          <PackingSlipsPrint orders={printOrders} type="Local Orders" />
+          <PackingSlipsPrint orders={selectedOrders} type="Local Orders" />
         ) : null}
 
         {printMode === "courierPackingSlip" ? (
-          <PackingSlipsPrint orders={printOrders} type="Courier Orders" />
+          <PackingSlipsPrint orders={selectedOrders} type="Courier Orders" />
         ) : null}
 
         {printMode === "checklist" ? (
-          <ChecklistPrint orders={printOrders} />
+          <ChecklistPrint orders={selectedOrders} />
         ) : null}
       </div>
     </div>
@@ -3275,10 +2926,6 @@ function formatPackingSlipRouteDriverDate(order: Order) {
 }
 
 function formatDriverPickupDetails(order: Order) {
-  if (normalizeSearchText(order.pickupLocationCompany) === "rocklea") {
-    return "Rocklea Pickup";
-  }
-
   return order.driverName?.trim() || "";
 }
 
@@ -3429,38 +3076,6 @@ function normalizeKey(value: string) {
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-async function postAuthenticatedJson(
-  actionUrl: string,
-  payload: unknown,
-) {
-  const shopifyAppBridge = (
-    window as Window & {
-      shopify?: {
-        idToken?: () => Promise<string>;
-      };
-    }
-  ).shopify;
-
-  if (!shopifyAppBridge?.idToken) {
-    throw new Error(
-      "Shopify authentication is not ready. Please refresh the app and try again.",
-    );
-  }
-
-  const token = await shopifyAppBridge.idToken();
-
-  return fetch(actionUrl, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  });
 }
 
 function normalizeSearchText(value: string) {
