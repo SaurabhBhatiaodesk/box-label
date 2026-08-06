@@ -2925,7 +2925,15 @@ function formatPackingSlipRouteDriverDate(order: Order) {
   return "";
 }
 
+function isRockleaPickupOrder(order: Order) {
+  return normalizeSearchText(order.pickupLocationCompany || "") === "rocklea";
+}
+
 function formatDriverPickupDetails(order: Order) {
+  if (isRockleaPickupOrder(order)) {
+    return "Rocklea Pickup";
+  }
+
   return order.driverName?.trim() || "";
 }
 
