@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLoaderData, useRevalidator } from "react-router";
+import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import { authenticate } from "../shopify.server";
 
 const LOGO_URL =
@@ -561,11 +561,13 @@ export default function Index() {
     "all" | "local" | "courier"
   >("all");
 
-  // Combine server lookup results with loader orders (dedupe by id)
+  const lookupFetcher = useFetcher<{ order: Order | null }>();
+
+  // Prefer loader orders (richer fields). Only append lookup hits that are missing.
   const allOrders = useMemo(() => {
     const map = new Map<string, Order>();
-    lookupOrders.forEach((o) => map.set(o.id, o));
-    orders.forEach((o) => {
+    orders.forEach((o) => map.set(o.id, o));
+    lookupOrders.forEach((o) => {
       if (!map.has(o.id)) map.set(o.id, o);
     });
     return Array.from(map.values());
@@ -576,6 +578,7 @@ export default function Index() {
     const search = normalizeSearchText(rawSearch);
     const numberMatch = rawSearch.match(/^#?(\d+)$/);
     const numericSearch = numberMatch ? numberMatch[1] : null;
+    const searchDate = parseFlexibleDate(rawSearch);
 
     return allOrders.filter((order) => {
       const routeText = normalizeSearchText(order.easyRoutesRoute);
@@ -593,6 +596,16 @@ export default function Index() {
         return true;
       }
 
+      const orderNameDigits = normalizeSearchText(order.name).replace(/\s/g, "");
+
+      if (numericSearch) {
+        return (
+          orderNameDigits === numericSearch ||
+          orderNameDigits.includes(numericSearch) ||
+          normalizeSearchText(order.id).includes(numericSearch)
+        );
+      }
+
       const searchableText = normalizeSearchText(
         [
           order.id,
@@ -602,56 +615,72 @@ export default function Index() {
           order.deliveryDay,
           order.deliveryMethod,
           order.easyRoutesRoute,
+          order.easyRoutesRouteStart,
+          order.easyRoutesStopEta,
           order.driverName,
           formatShippingAddress(order),
         ].join(" "),
       );
 
-      if (numericSearch) {
-        return (
-          searchableText.includes(numericSearch) ||
-          normalizeSearchText(order.name).includes(numericSearch) ||
-          normalizeSearchText(order.id).includes(numericSearch)
-        );
+      if (searchableText.includes(search)) {
+        return true;
       }
 
-      return searchableText.includes(search);
+      // Match dates across formats (21/05/2026 vs May 21, 2026 vs 2026-05-21)
+      if (searchDate) {
+        const orderDates = [
+          order.deliveryDate,
+          order.deliveryDay,
+          order.easyRoutesRouteStart,
+          order.easyRoutesStopEta,
+          order.easyRoutesRoute,
+        ];
+
+        if (
+          orderDates.some((value) => {
+            const parsed = parseFlexibleDate(value);
+            return parsed ? sameDate(parsed, searchDate) : false;
+          })
+        ) {
+          return true;
+        }
+      }
+
+      // Token match so "Trevor May" still works when fields are split
+      const tokens = search.split(/\s+/).filter(Boolean);
+      return tokens.length > 0 && tokens.every((token) => searchableText.includes(token));
     });
   }, [allOrders, deliveryDateSearch, routeCourierFilter]);
 
-  // When user types an order-number (e.g. "#127210" or "127210"), do a server-side lookup
+  // When user types an order-number (e.g. "#127210" or "127210"), do a server-side lookup.
+  // Route file app.order.lookup.ts maps to /app/order/lookup (dot → slash in fs-routes).
   useEffect(() => {
-    const m = (deliveryDateSearch || "").match(/^#?(\d+)$/);
+    const m = (deliveryDateSearch || "").trim().match(/^#?(\d+)$/);
     if (!m) {
       setLookupOrders([]);
       return;
     }
 
-    const num = m[1];
-
-    let aborted = false;
-
-    (async () => {
-      try {
-        const res = await fetch(`/order.lookup?q=${encodeURIComponent(num)}`);
-        if (!res.ok) return;
-        const json = await res.json();
-        if (aborted) return;
-        if (json?.order) {
-          setLookupOrders([json.order]);
-        } else {
-          setLookupOrders([]);
-        }
-      } catch (err) {
-        console.error('Order lookup failed:', err);
-        if (!aborted) setLookupOrders([]);
-      }
-    })();
-
-    return () => {
-      aborted = true;
-    };
+    lookupFetcher.load(`/app/order/lookup?q=${encodeURIComponent(m[1])}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run on search text
   }, [deliveryDateSearch]);
+
+  useEffect(() => {
+    if (lookupFetcher.state !== "idle") return;
+    if (!lookupFetcher.data) return;
+
+    const rawSearch = (deliveryDateSearch || "").trim();
+    if (!/^#?\d+$/.test(rawSearch)) {
+      setLookupOrders([]);
+      return;
+    }
+
+    if (lookupFetcher.data.order) {
+      setLookupOrders([lookupFetcher.data.order]);
+    } else {
+      setLookupOrders([]);
+    }
+  }, [lookupFetcher.state, lookupFetcher.data, deliveryDateSearch]);
 
   const visibleOrders = useMemo(() => {
     return filteredOrders.slice(0, Number(ordersLimit));
@@ -3157,6 +3186,98 @@ function normalizeSearchText(value: string) {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+const MONTH_INDEX: Record<string, number> = {
+  jan: 1,
+  january: 1,
+  feb: 2,
+  february: 2,
+  mar: 3,
+  march: 3,
+  apr: 4,
+  april: 4,
+  may: 5,
+  jun: 6,
+  june: 6,
+  jul: 7,
+  july: 7,
+  aug: 8,
+  august: 8,
+  sep: 9,
+  sept: 9,
+  september: 9,
+  oct: 10,
+  october: 10,
+  nov: 11,
+  november: 11,
+  dec: 12,
+  december: 12,
+};
+
+type ParsedDate = { year: number; month: number; day: number };
+
+function parseFlexibleDate(value: string): ParsedDate | null {
+  const raw = (value || "").trim();
+  if (!raw) return null;
+
+  // ISO / Shopify: 2026-05-21 or 2026-05-21T08:00:00
+  let match = raw.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (match) {
+    return {
+      year: Number(match[1]),
+      month: Number(match[2]),
+      day: Number(match[3]),
+    };
+  }
+
+  // AU style DMY: 21/05/2026, 21-05-2026, 21.05.2026
+  match = raw.match(/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b/);
+  if (match) {
+    let year = Number(match[3]);
+    if (year < 100) year += 2000;
+    return {
+      year,
+      month: Number(match[2]),
+      day: Number(match[1]),
+    };
+  }
+
+  // May 21, 2026 / May 21 2026 / Thu, May 21, 2026
+  match = raw.match(
+    /\b([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/,
+  );
+  if (match) {
+    const month = MONTH_INDEX[match[1].toLowerCase()];
+    if (month) {
+      return {
+        year: Number(match[3]),
+        month,
+        day: Number(match[2]),
+      };
+    }
+  }
+
+  // 21 May 2026
+  match = raw.match(
+    /\b(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+),?\s+(\d{4})\b/,
+  );
+  if (match) {
+    const month = MONTH_INDEX[match[2].toLowerCase()];
+    if (month) {
+      return {
+        year: Number(match[3]),
+        month,
+        day: Number(match[1]),
+      };
+    }
+  }
+
+  return null;
+}
+
+function sameDate(a: ParsedDate, b: ParsedDate) {
+  return a.year === b.year && a.month === b.month && a.day === b.day;
 }
 
 function chunkArray<T>(array: T[], size: number): T[][] {
