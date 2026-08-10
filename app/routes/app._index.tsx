@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import {
   AppProvider as PolarisAppProvider,
-  ChoiceList,
-  Filters,
+  Card,
+  IndexFilters,
+  IndexFiltersMode,
+  useSetIndexFiltersMode,
 } from "@shopify/polaris";
 import enTranslations from "@shopify/polaris/locales/en.json";
 import "@shopify/polaris/build/esm/styles.css";
@@ -613,37 +615,20 @@ export default function Index() {
     }
   }, [lookupFetcher.state, lookupFetcher.data, deliveryDateSearch]);
 
-  const polarisFilters = [
-    {
-      key: "route",
-      label: "EasyRoutes Route",
-      filter: (
-        <ChoiceList
-          title="EasyRoutes Route"
-          titleHidden
-          choices={[
-            { label: "All routes", value: "all" },
-            {
-              label: "Local orders - route does not contain Courier",
-              value: "local",
-            },
-            {
-              label: "Courier orders - route contains Courier",
-              value: "courier",
-            },
-          ]}
-          selected={[routeCourierFilter]}
-          onChange={(selected) => {
-            setRouteCourierFilter(
-              (selected[0] as "all" | "local" | "courier") || "all",
-            );
-            setSelectedIds([]);
-          }}
-        />
-      ),
-      shortcut: true,
-    },
+  const { mode, setMode } = useSetIndexFiltersMode(IndexFiltersMode.Filtering);
+
+  const routeTabs = [
+    { content: "All", id: "all-orders" },
+    { content: "Local", id: "local-orders" },
+    { content: "Courier", id: "courier-orders" },
   ];
+
+  const selectedRouteTab =
+    routeCourierFilter === "local"
+      ? 1
+      : routeCourierFilter === "courier"
+        ? 2
+        : 0;
 
   const appliedPolarisFilters =
     routeCourierFilter === "all"
@@ -1547,25 +1532,45 @@ export default function Index() {
 
             <div className="search-row polaris-search-row">
               <PolarisAppProvider i18n={enTranslations}>
-                <Filters
-                  queryValue={deliveryDateSearch}
-                  queryPlaceholder="Search order #, customer, driver, date…"
-                  filters={polarisFilters}
-                  appliedFilters={appliedPolarisFilters}
-                  onQueryChange={(value) => {
-                    setDeliveryDateSearch(value);
-                    setSelectedIds([]);
-                  }}
-                  onQueryClear={() => {
-                    setDeliveryDateSearch("");
-                    setSelectedIds([]);
-                  }}
-                  onClearAll={() => {
-                    setDeliveryDateSearch("");
-                    setRouteCourierFilter("all");
-                    setSelectedIds([]);
-                  }}
-                />
+                <Card padding="0">
+                  <IndexFilters
+                    mode={mode}
+                    setMode={setMode}
+                    tabs={routeTabs}
+                    selected={selectedRouteTab}
+                    onSelect={(selectedTabIndex) => {
+                      const nextRoute =
+                        selectedTabIndex === 1
+                          ? "local"
+                          : selectedTabIndex === 2
+                            ? "courier"
+                            : "all";
+                      setRouteCourierFilter(nextRoute);
+                      setSelectedIds([]);
+                    }}
+                    filters={[]}
+                    appliedFilters={appliedPolarisFilters}
+                    queryValue={deliveryDateSearch}
+                    queryPlaceholder="Search order #, customer, driver, or date"
+                    onQueryChange={(value) => {
+                      setDeliveryDateSearch(value);
+                      setSelectedIds([]);
+                    }}
+                    onQueryClear={() => {
+                      setDeliveryDateSearch("");
+                      setSelectedIds([]);
+                    }}
+                    onClearAll={() => {
+                      setDeliveryDateSearch("");
+                      setRouteCourierFilter("all");
+                      setSelectedIds([]);
+                    }}
+                    canCreateNewView={false}
+                    autoFocusSearchField
+                    disableKeyboardShortcuts
+                    filteringAccessibilityLabel="Search orders"
+                  />
+                </Card>
               </PolarisAppProvider>
             </div>
 
