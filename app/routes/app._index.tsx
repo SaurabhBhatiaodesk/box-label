@@ -7,11 +7,12 @@ const LOGO_URL =
 
 const SUPPORT_PHONE = "0480 079 218";
 const PACKING_SLIP_WORD_FONT_SIZE = 21;
-const ORDERS_FETCH_LIMIT = 100;
+const ORDERS_FETCH_LIMIT = 250;
 const ORDERS_PAGE_SIZE = 100;
 
 // Keep the page loader fast by limiting the maximum number of orders fetched.
 // This prevents Heroku H12 request timeouts when Shopify returns large order sets.
+// Increase the limit so older orders like #127210 can still be loaded and searched.
 
 type PrintMode =
   | "labels"
