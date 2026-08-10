@@ -548,6 +548,12 @@ export default function Index() {
   const [routeCourierFilter, setRouteCourierFilter] = useState<
     "all" | "local" | "courier"
   >("all");
+  const searchFieldRef =
+    useRef<HTMLElementTagNameMap["s-search-field"] | null>(null);
+  const printModeSelectRef =
+    useRef<HTMLElementTagNameMap["s-select"] | null>(null);
+  const ordersLimitSelectRef =
+    useRef<HTMLElementTagNameMap["s-select"] | null>(null);
 
   const lookupFetcher = useFetcher<{ order: Order | null }>();
 
@@ -607,9 +613,56 @@ export default function Index() {
   }, [lookupFetcher.state, lookupFetcher.data, deliveryDateSearch]);
 
   const applySearchValue = (value: string) => {
+    if (searchFieldRef.current?.value !== value) {
+      searchFieldRef.current!.value = value;
+    }
     setDeliveryDateSearch(value);
     setSelectedIds([]);
   };
+
+  useEffect(() => {
+    const searchField = searchFieldRef.current;
+    if (!searchField) return;
+
+    const handleSearchInput = () => {
+      setDeliveryDateSearch(searchField.value);
+      setSelectedIds([]);
+    };
+
+    searchField.addEventListener("input", handleSearchInput);
+    searchField.addEventListener("change", handleSearchInput);
+
+    return () => {
+      searchField.removeEventListener("input", handleSearchInput);
+      searchField.removeEventListener("change", handleSearchInput);
+    };
+  }, []);
+
+  useEffect(() => {
+    const printModeSelect = printModeSelectRef.current;
+    const ordersLimitSelect = ordersLimitSelectRef.current;
+    if (!printModeSelect || !ordersLimitSelect) return;
+
+    const handlePrintModeChange = () => {
+      setPrintMode(printModeSelect.value as PrintMode);
+    };
+    const handleOrdersLimitChange = () => {
+      setOrdersLimit(ordersLimitSelect.value);
+      setSelectedIds([]);
+    };
+
+    printModeSelect.addEventListener("input", handlePrintModeChange);
+    printModeSelect.addEventListener("change", handlePrintModeChange);
+    ordersLimitSelect.addEventListener("input", handleOrdersLimitChange);
+    ordersLimitSelect.addEventListener("change", handleOrdersLimitChange);
+
+    return () => {
+      printModeSelect.removeEventListener("input", handlePrintModeChange);
+      printModeSelect.removeEventListener("change", handlePrintModeChange);
+      ordersLimitSelect.removeEventListener("input", handleOrdersLimitChange);
+      ordersLimitSelect.removeEventListener("change", handleOrdersLimitChange);
+    };
+  }, []);
 
   const visibleOrders = useMemo(() => {
     return filteredOrders.slice(0, Number(ordersLimit));
@@ -684,392 +737,8 @@ export default function Index() {
       <style>{`
         ${getPageCss(printMode)}
 
-        .app-root {
-          min-height: 100vh;
-          background: #f6f6f7;
-          color: #202223;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-        }
-
-        .screen-area {
-          display: block;
-          padding: 24px;
-        }
-
-        .page-container {
-          max-width: 1360px;
-          margin: 0 auto;
-        }
-
-        .page-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          gap: 16px;
-          margin-bottom: 18px;
-        }
-
-        .eyebrow {
-          font-size: 12px;
-          font-weight: 700;
-          color: #6d7175;
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-          margin-bottom: 6px;
-        }
-
-        .page-title {
-          margin: 0;
-          font-size: 24px;
-          line-height: 32px;
-          font-weight: 750;
-        }
-
-        .page-description {
-          margin: 6px 0 0;
-          color: #6d7175;
-          font-size: 14px;
-          line-height: 20px;
-        }
-
-        .header-actions {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-
-        .summary-grid {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 14px;
-          margin-bottom: 16px;
-        }
-
-        .summary-card {
-          background: #fff;
-          border: 1px solid #e1e3e5;
-          border-radius: 12px;
-          padding: 16px;
-          box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
-        }
-
-        .summary-label {
-          font-size: 13px;
-          color: #6d7175;
-          margin-bottom: 6px;
-        }
-
-        .summary-value {
-          font-size: 26px;
-          line-height: 32px;
-          font-weight: 750;
-        }
-
-        .card {
-          background: #fff;
-          border: 1px solid #e1e3e5;
-          border-radius: 12px;
-          overflow: hidden;
-          box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
-        }
-
-        .card-header {
-          padding: 16px 18px;
-          border-bottom: 1px solid #e1e3e5;
-          background: #fff;
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          gap: 12px;
-          flex-wrap: wrap;
-        }
-
-        .card-title {
-          margin: 0;
-          font-size: 16px;
-          line-height: 24px;
-          font-weight: 750;
-        }
-
-        .card-subtitle {
-          margin: 4px 0 0;
-          color: #6d7175;
-          font-size: 13px;
-          line-height: 18px;
-        }
-
-        .toolbar {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-
-        .search-row {
-          padding: 16px 18px;
-          border-bottom: 1px solid #e1e3e5;
-          background: #fbfbfb;
-          display: grid;
-          grid-template-columns: minmax(240px, 1fr) minmax(220px, 280px) auto;
-          gap: 12px;
-          align-items: end;
-        }
-
-        .search-row-filters {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-          flex-wrap: wrap;
-          grid-column: 1 / -1;
-        }
-
-        .filter-chip-group {
-          display: inline-flex;
-          border: 1px solid #c9cccf;
-          border-radius: 8px;
-          overflow: hidden;
-          background: #fff;
-        }
-
-        .filter-chip {
-          min-height: 36px;
-          border: 0;
-          border-right: 1px solid #c9cccf;
-          background: #fff;
-          color: #202223;
-          font-size: 13px;
-          font-weight: 600;
-          padding: 8px 14px;
-          cursor: pointer;
-        }
-
-        .filter-chip:last-child {
-          border-right: 0;
-        }
-
-        .filter-chip.is-active {
-          background: #202223;
-          color: #fff;
-        }
-
-        .field label {
-          display: block;
-          font-size: 13px;
-          line-height: 18px;
-          font-weight: 650;
-          margin-bottom: 6px;
-        }
-
-        .search-input,
-        .select-box {
-          min-height: 36px;
-          border: 1px solid #babfc3;
-          border-radius: 8px;
-          background: #fff;
-          color: #202223;
-          font-size: 14px;
-          line-height: 20px;
-          padding: 8px 10px;
-          box-sizing: border-box;
-          outline: none;
-        }
-
-        .search-input {
-          width: 100%;
-        }
-
-        .template-select {
-          min-width: 250px;
-        }
-
-        .search-input:focus,
-        .select-box:focus {
-          border-color: #2c6ecb;
-          box-shadow: 0 0 0 1px #2c6ecb;
-        }
-
-        .button {
-          min-height: 36px;
-          padding: 8px 14px;
-          border-radius: 8px;
-          border: 1px solid #202223;
-          background: #202223;
-          color: #fff;
-          font-size: 14px;
-          font-weight: 650;
-          cursor: pointer;
-          box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
-        }
-
-        .button:hover {
-          background: #111827;
-        }
-
-        .button-secondary {
-          min-height: 36px;
-          padding: 8px 14px;
-          border-radius: 8px;
-          border: 1px solid #c9cccf;
-          background: #fff;
-          color: #202223;
-          font-size: 14px;
-          font-weight: 650;
-          cursor: pointer;
-        }
-
-        .button-secondary:hover {
-          background: #f6f6f7;
-        }
-
-        .table-wrap {
-          overflow-x: auto;
-          width: 100%;
-        }
-
-        .data-table {
-          width: 100%;
-          border-collapse: separate;
-          border-spacing: 0;
-        }
-
-        .data-table th {
-          background: #f6f6f7;
-          border-bottom: 1px solid #e1e3e5;
-          color: #6d7175;
-          font-size: 12px;
-          line-height: 16px;
-          font-weight: 750;
-          text-align: left;
-          padding: 10px 12px;
-          white-space: nowrap;
-        }
-
-        .data-table td {
-          border-bottom: 1px solid #e1e3e5;
-          color: #202223;
-          font-size: 13px;
-          line-height: 18px;
-          padding: 12px;
-          vertical-align: top;
-        }
-
-        .data-table tbody tr:hover {
-          background: #fafafa;
-        }
-
-        .data-table tbody tr:last-child td {
-          border-bottom: 0;
-        }
-
-        .selected-row {
-          background: #f2f7ff !important;
-        }
-
-        .checkbox-cell {
-          width: 44px;
-        }
-
-        .order-checkbox {
-          width: 16px;
-          height: 16px;
-          cursor: pointer;
-        }
-
-        .primary-text {
-          font-weight: 650;
-        }
-
-        .muted-text {
-          color: #6d7175;
-          font-size: 12px;
-          line-height: 17px;
-          margin-top: 2px;
-        }
-
-        .badge {
-          display: inline-flex;
-          align-items: center;
-          padding: 3px 8px;
-          border-radius: 999px;
-          background: #eaf4ff;
-          color: #1f5199;
-          border: 1px solid #b4d7ff;
-          font-size: 12px;
-          line-height: 16px;
-          font-weight: 650;
-          max-width: 100%;
-          margin: 2px 4px 2px 0;
-        }
-
-        .badge-green {
-          background: #f1f8f5;
-          color: #008060;
-          border-color: #aee9d1;
-        }
-
-        .badge-muted {
-          background: #f6f6f7;
-          color: #6d7175;
-          border-color: #e1e3e5;
-        }
-
-        .address-cell {
-          max-width: 360px;
-        }
-
-        .details-cell {
-          max-width: 360px;
-        }
-
-        .empty-state {
-          padding: 34px 18px;
-          text-align: center;
-          color: #6d7175;
-          font-size: 14px;
-          line-height: 20px;
-        }
-
         .print-area {
           display: none;
-        }
-
-        @media (max-width: 1000px) {
-          .summary-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-
-          .page-header,
-          .search-row {
-            grid-template-columns: 1fr;
-          }
-
-          .page-header {
-            flex-direction: column;
-          }
-        }
-
-        @media (max-width: 680px) {
-          .screen-area {
-            padding: 16px;
-          }
-
-          .summary-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .header-actions,
-          .toolbar {
-            width: 100%;
-          }
-
-          .select-box,
-          .template-select,
-          .button,
-          .button-secondary {
-            width: 100%;
-          }
         }
 
         @media print {
@@ -1423,283 +1092,294 @@ export default function Index() {
       `}</style>
 
       <div className="screen-area">
-        <div className="page-container">
-          <div className="page-header">
-            <div>
-              <div className="eyebrow">Print centre</div>
-              <h1 className="page-title">Box Label Printer</h1>
-              <p className="page-description">
-                Search orders by delivery date or EasyRoutes date, then print
-                labels, packing slips, or checklist.
-              </p>
-            </div>
+        <s-page heading="Box Label Printer" inlineSize="large">
+          <s-stack direction="block" gap="large">
+            <s-section heading="Print centre">
+              <s-stack direction="block" gap="base">
+                <s-paragraph color="subdued">
+                  Search orders by delivery date or EasyRoutes date, then print
+                  labels, packing slips, or checklist.
+                </s-paragraph>
 
-            <div className="header-actions">
-              <select
-                className="select-box template-select"
-                value={printMode}
-                onChange={(event) =>
-                  setPrintMode(event.target.value as PrintMode)
-                }
-              >
-                <option value="labels">Box Labels - Local Orders</option>
-                <option value="courierLabels">
-                  Box Labels - Courier Orders
-                </option>
-                <option value="localPackingSlip">
-                  Packing Slip - Local Orders
-                </option>
-                <option value="courierPackingSlip">
-                  Packing Slip - Courier Orders
-                </option>
-                <option value="checklist">Checklist</option>
-              </select>
-
-              {showWordExportButton ? (
-                <button
-                  className="button-secondary"
-                  type="button"
-                  onClick={handleExportWord}
-                >
-                  Export to Word
-                </button>
-              ) : null}
-
-              <button className="button" onClick={handlePrint}>
-                {printButtonLabel}
-              </button>
-            </div>
-          </div>
-
-          <div className="summary-grid">
-            <div className="summary-card">
-              <div className="summary-label">Orders loaded</div>
-              <div className="summary-value">{orders.length}</div>
-            </div>
-
-            <div className="summary-card">
-              <div className="summary-label">Filtered orders</div>
-              <div className="summary-value">{filteredOrders.length}</div>
-            </div>
-
-            <div className="summary-card">
-              <div className="summary-label">Selected orders</div>
-              <div className="summary-value">{selectedOrders.length}</div>
-            </div>
-
-            <div className="summary-card">
-              <div className="summary-label">Orders with driver</div>
-              <div className="summary-value">{ordersWithDriver}</div>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card-header">
-              <div>
-                <h2 className="card-title">Orders</h2>
-                <p className="card-subtitle">
-                  Showing {visibleOrders.length} of {filteredOrders.length}{" "}
-                  matching orders.
-                </p>
-              </div>
-
-              <div className="toolbar">
-                <select
-                  className="select-box"
-                  value={ordersLimit}
-                  onChange={(event) => {
-                    setOrdersLimit(event.target.value);
-                    setSelectedIds([]);
-                  }}
-                >
-                  <option value="20">Show 20 orders</option>
-                  <option value="50">Show 50 orders</option>
-                  <option value="100">Show 100 orders</option>
-                  <option value="250">Show 250 orders</option>
-                  <option value="1000">Show all loaded</option>
-                </select>
-
-                <button className="button-secondary" onClick={toggleAll}>
-                  {selectedIds.length === visibleOrders.length
-                    ? "Unselect All"
-                    : "Select All"}
-                </button>
-              </div>
-            </div>
-
-            <div className="search-row">
-              <div className="field" style={{ gridColumn: "1 / -1" }}>
-                <label htmlFor="order-search">Search orders</label>
-                <input
-                  id="order-search"
-                  className="search-input"
-                  type="search"
-                  value={deliveryDateSearch}
-                  onChange={(event) => applySearchValue(event.target.value)}
-                  placeholder="Search order #, customer, driver, or date"
-                  autoComplete="off"
-                />
-              </div>
-              <div className="search-row-filters">
-                <div className="filter-chip-group" role="group" aria-label="Route filter">
-                  <button
-                    type="button"
-                    className={`filter-chip${routeCourierFilter === "all" ? " is-active" : ""}`}
-                    onClick={() => {
-                      setRouteCourierFilter("all");
-                      setSelectedIds([]);
-                    }}
+                <s-stack direction="inline" gap="base" alignItems="end">
+                  <s-select
+                    ref={printModeSelectRef}
+                    label="Print template"
+                    name="printMode"
+                    value={printMode}
                   >
-                    All
-                  </button>
-                  <button
-                    type="button"
-                    className={`filter-chip${routeCourierFilter === "local" ? " is-active" : ""}`}
-                    onClick={() => {
-                      setRouteCourierFilter("local");
-                      setSelectedIds([]);
-                    }}
-                  >
-                    Local
-                  </button>
-                  <button
-                    type="button"
-                    className={`filter-chip${routeCourierFilter === "courier" ? " is-active" : ""}`}
-                    onClick={() => {
-                      setRouteCourierFilter("courier");
-                      setSelectedIds([]);
-                    }}
-                  >
-                    Courier
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  className="button-secondary"
-                  onClick={() => {
-                    applySearchValue("");
-                    setRouteCourierFilter("all");
-                  }}
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
+                    <s-option value="labels">
+                      Box Labels - Local Orders
+                    </s-option>
+                    <s-option value="courierLabels">
+                      Box Labels - Courier Orders
+                    </s-option>
+                    <s-option value="localPackingSlip">
+                      Packing Slip - Local Orders
+                    </s-option>
+                    <s-option value="courierPackingSlip">
+                      Packing Slip - Courier Orders
+                    </s-option>
+                    <s-option value="checklist">Checklist</s-option>
+                  </s-select>
 
-            {visibleOrders.length === 0 ? (
-              <div className="empty-state">No orders found.</div>
-            ) : (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th className="checkbox-cell">Select</th>
-                      <th>Order</th>
-                      <th>Customer</th>
-                      <th>Address</th>
-                      <th>Delivery</th>
-                      <th>Method</th>
-                      <th>EasyRoutes Route</th>
-                      <th>Driver</th>
-                    </tr>
-                  </thead>
+                  {showWordExportButton ? (
+                    <s-button variant="secondary" onClick={handleExportWord}>
+                      Export to Word
+                    </s-button>
+                  ) : null}
 
-                  <tbody>
-                    {visibleOrders.map((order) => (
-                      <tr
-                        key={order.id}
-                        className={
-                          selectedIds.includes(order.id) ? "selected-row" : ""
-                        }
+                  <s-button variant="primary" onClick={handlePrint}>
+                    {printButtonLabel}
+                  </s-button>
+                </s-stack>
+              </s-stack>
+            </s-section>
+
+            <s-grid
+              gridTemplateColumns="repeat(auto-fit, minmax(180px, 1fr))"
+              gap="base"
+            >
+              <s-section>
+                <s-stack direction="block" gap="small-200">
+                  <s-text color="subdued">Orders loaded</s-text>
+                  <s-heading>{String(orders.length)}</s-heading>
+                </s-stack>
+              </s-section>
+
+              <s-section>
+                <s-stack direction="block" gap="small-200">
+                  <s-text color="subdued">Filtered orders</s-text>
+                  <s-heading>{String(filteredOrders.length)}</s-heading>
+                </s-stack>
+              </s-section>
+
+              <s-section>
+                <s-stack direction="block" gap="small-200">
+                  <s-text color="subdued">Selected orders</s-text>
+                  <s-heading>{String(selectedOrders.length)}</s-heading>
+                </s-stack>
+              </s-section>
+
+              <s-section>
+                <s-stack direction="block" gap="small-200">
+                  <s-text color="subdued">Orders with driver</s-text>
+                  <s-heading>{String(ordersWithDriver)}</s-heading>
+                </s-stack>
+              </s-section>
+            </s-grid>
+
+            <s-section heading="Orders" padding="none">
+              <s-box padding="base">
+                <s-stack direction="block" gap="base">
+                  <s-stack
+                    direction="inline"
+                    gap="base"
+                    justifyContent="space-between"
+                    alignItems="end"
+                  >
+                    <s-paragraph color="subdued">
+                      Showing {visibleOrders.length} of {filteredOrders.length}{" "}
+                      matching orders.
+                    </s-paragraph>
+
+                    <s-stack direction="inline" gap="base" alignItems="end">
+                      <s-select
+                        ref={ordersLimitSelectRef}
+                        label="Orders shown"
+                        name="ordersLimit"
+                        value={ordersLimit}
                       >
-                        <td className="checkbox-cell">
-                          <input
-                            className="order-checkbox"
-                            type="checkbox"
+                        <s-option value="20">Show 20 orders</s-option>
+                        <s-option value="50">Show 50 orders</s-option>
+                        <s-option value="100">Show 100 orders</s-option>
+                        <s-option value="250">Show 250 orders</s-option>
+                        <s-option value="1000">Show all loaded</s-option>
+                      </s-select>
+
+                      <s-button variant="secondary" onClick={toggleAll}>
+                        {selectedIds.length === visibleOrders.length
+                          ? "Unselect all"
+                          : "Select all"}
+                      </s-button>
+                    </s-stack>
+                  </s-stack>
+
+                  <s-search-field
+                    ref={searchFieldRef}
+                    label="Search orders"
+                    value={deliveryDateSearch}
+                    placeholder="Search order #, customer, driver, or date"
+                    autocomplete="off"
+                  ></s-search-field>
+
+                  <s-stack
+                    direction="inline"
+                    gap="base"
+                    justifyContent="space-between"
+                    alignItems="center"
+                  >
+                    <s-stack direction="inline" gap="small-200">
+                      <s-press-button
+                        pressed={routeCourierFilter === "all"}
+                        onClick={() => {
+                          setRouteCourierFilter("all");
+                          setSelectedIds([]);
+                        }}
+                      >
+                        All
+                      </s-press-button>
+                      <s-press-button
+                        pressed={routeCourierFilter === "local"}
+                        onClick={() => {
+                          setRouteCourierFilter("local");
+                          setSelectedIds([]);
+                        }}
+                      >
+                        Local
+                      </s-press-button>
+                      <s-press-button
+                        pressed={routeCourierFilter === "courier"}
+                        onClick={() => {
+                          setRouteCourierFilter("courier");
+                          setSelectedIds([]);
+                        }}
+                      >
+                        Courier
+                      </s-press-button>
+                    </s-stack>
+
+                    <s-button
+                      variant="secondary"
+                      onClick={() => {
+                        applySearchValue("");
+                        setRouteCourierFilter("all");
+                      }}
+                    >
+                      Clear
+                    </s-button>
+                  </s-stack>
+                </s-stack>
+              </s-box>
+
+              <s-divider></s-divider>
+
+              {visibleOrders.length === 0 ? (
+                <s-box padding="large-400">
+                  <s-paragraph color="subdued">No orders found.</s-paragraph>
+                </s-box>
+              ) : (
+                <s-table variant="auto">
+                  <s-table-header-row>
+                    <s-table-header listSlot="inline">Select</s-table-header>
+                    <s-table-header listSlot="primary">Order</s-table-header>
+                    <s-table-header listSlot="secondary">
+                      Customer
+                    </s-table-header>
+                    <s-table-header listSlot="labeled">Address</s-table-header>
+                    <s-table-header listSlot="labeled">Delivery</s-table-header>
+                    <s-table-header listSlot="labeled">Method</s-table-header>
+                    <s-table-header listSlot="labeled">
+                      EasyRoutes route
+                    </s-table-header>
+                    <s-table-header listSlot="labeled">Driver</s-table-header>
+                  </s-table-header-row>
+
+                  <s-table-body>
+                    {visibleOrders.map((order) => (
+                      <s-table-row key={order.id}>
+                        <s-table-cell>
+                          <s-checkbox
+                            label={`Select ${order.name}`}
+                            labelAccessibilityVisibility="exclusive"
                             checked={selectedIds.includes(order.id)}
                             onChange={() => toggleOrder(order.id)}
-                          />
-                        </td>
+                          ></s-checkbox>
+                        </s-table-cell>
 
-                        <td>
-                          <div className="primary-text">{order.name}</div>
-                        </td>
+                        <s-table-cell>
+                          <s-text type="strong">{order.name}</s-text>
+                        </s-table-cell>
 
-                        <td>
-                          {order.customerName || (
-                            <span className="muted-text">No customer</span>
-                          )}
-                        </td>
-
-                        <td className="address-cell">
-                          {formatShippingAddress(order) || (
-                            <span className="muted-text">-</span>
-                          )}
-                        </td>
-
-                        <td>
-                          <div className="primary-text">
-                            {order.deliveryDate || "-"}
-                          </div>
-                          {order.deliveryDay ? (
-                            <div className="muted-text">
-                              {order.deliveryDay}
-                            </div>
-                          ) : null}
-                        </td>
-
-                        <td>
-                          {order.deliveryMethod ? (
-                            <span className="badge badge-green">
-                              {order.deliveryMethod}
-                            </span>
+                        <s-table-cell>
+                          {order.customerName ? (
+                            <s-text>{order.customerName}</s-text>
                           ) : (
-                            <span className="badge badge-muted">No method</span>
+                            <s-text color="subdued">No customer</s-text>
                           )}
-                        </td>
+                        </s-table-cell>
 
-                        <td className="details-cell">
+                        <s-table-cell>
+                          <s-text>
+                            {formatShippingAddress(order) || "-"}
+                          </s-text>
+                        </s-table-cell>
+
+                        <s-table-cell>
+                          <s-stack direction="block" gap="small-200">
+                            <s-text type="strong">
+                              {order.deliveryDate || "-"}
+                            </s-text>
+                            {order.deliveryDay ? (
+                              <s-text color="subdued">
+                                {order.deliveryDay}
+                              </s-text>
+                            ) : null}
+                          </s-stack>
+                        </s-table-cell>
+
+                        <s-table-cell>
+                          {order.deliveryMethod ? (
+                            <s-badge tone="success">
+                              {order.deliveryMethod}
+                            </s-badge>
+                          ) : (
+                            <s-badge tone="neutral">No method</s-badge>
+                          )}
+                        </s-table-cell>
+
+                        <s-table-cell>
                           {order.easyRoutesRoute ? (
-                            <>
-                              <div className="primary-text">
+                            <s-stack direction="block" gap="small-200">
+                              <s-text type="strong">
                                 {order.easyRoutesRoute}
-                              </div>
+                              </s-text>
                               {order.easyRoutesStopNumber ? (
-                                <div className="muted-text">
-                                  Stop Number: {order.easyRoutesStopNumber}
-                                </div>
+                                <s-text color="subdued">
+                                  Stop number: {order.easyRoutesStopNumber}
+                                </s-text>
                               ) : null}
                               {order.easyRoutesRouteStart ? (
-                                <div className="muted-text">
-                                  Route Start: {order.easyRoutesRouteStart}
-                                </div>
+                                <s-text color="subdued">
+                                  Route start: {order.easyRoutesRouteStart}
+                                </s-text>
                               ) : null}
                               {order.easyRoutesStopEta ? (
-                                <div className="muted-text">
+                                <s-text color="subdued">
                                   Stop ETA: {order.easyRoutesStopEta}
-                                </div>
+                                </s-text>
                               ) : null}
-                            </>
+                            </s-stack>
                           ) : (
-                            <span className="muted-text">-</span>
+                            <s-text color="subdued">-</s-text>
                           )}
-                        </td>
+                        </s-table-cell>
 
-                        <td>
+                        <s-table-cell>
                           {order.driverName ? (
-                            <span className="badge">{order.driverName}</span>
+                            <s-badge tone="info">{order.driverName}</s-badge>
                           ) : (
-                            <span className="badge badge-muted">Not found</span>
+                            <s-badge tone="neutral">Not found</s-badge>
                           )}
-                        </td>
-                      </tr>
+                        </s-table-cell>
+                      </s-table-row>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
+                  </s-table-body>
+                </s-table>
+              )}
+            </s-section>
+          </s-stack>
+        </s-page>
       </div>
 
       <div className="print-area">
