@@ -34,7 +34,7 @@ type ActionData = {
 export const loader = async ({ request }: { request: Request }) => {
   const { admin, session } = await authenticate.admin(request);
 
-  const [drivers, response] = await Promise.all([
+  const [drivers, response]: [Driver[], any] = await Promise.all([
     prisma.driver.findMany({
       where: {
         shop: session.shop,
@@ -79,7 +79,7 @@ export const loader = async ({ request }: { request: Request }) => {
     `),
   ]);
 
-  const data = await response.json();
+  const data: any = await response.json();
 
   if (data?.errors) {
     console.error("Shopify GraphQL errors:", JSON.stringify(data.errors, null, 2));
@@ -208,7 +208,7 @@ export const action = async ({ request }: { request: Request }) => {
       value: JSON.stringify(driverDetails),
     }));
 
-    const response = await admin.graphql(
+    const response: any = await admin.graphql(
       `#graphql
         mutation AssignDriverToOrders($metafields: [MetafieldsSetInput!]!) {
           metafieldsSet(metafields: $metafields) {
@@ -231,7 +231,7 @@ export const action = async ({ request }: { request: Request }) => {
       },
     );
 
-    const data = await response.json();
+    const data: any = await response.json();
     const userErrors = data?.data?.metafieldsSet?.userErrors || [];
 
     if (data?.errors || userErrors.length > 0) {

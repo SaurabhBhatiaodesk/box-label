@@ -7,8 +7,11 @@ const LOGO_URL =
 
 const SUPPORT_PHONE = "0480 079 218";
 const PACKING_SLIP_WORD_FONT_SIZE = 21;
-const ORDERS_FETCH_LIMIT = 1500;
+const ORDERS_FETCH_LIMIT = 100;
 const ORDERS_PAGE_SIZE = 100;
+
+// Keep the page loader fast by limiting the maximum number of orders fetched.
+// This prevents Heroku H12 request timeouts when Shopify returns large order sets.
 
 type PrintMode =
   | "labels"
@@ -92,7 +95,7 @@ export const loader = async ({ request }: { request: Request }) => {
       ORDERS_FETCH_LIMIT - allEdges.length,
     );
 
-    const response = await admin.graphql(
+    const response: any = await admin.graphql(
       `#graphql
         query GetOrders($first: Int!, $after: String) {
           orders(first: $first, after: $after, sortKey: CREATED_AT, reverse: true, query: "status:any") {
@@ -175,7 +178,7 @@ export const loader = async ({ request }: { request: Request }) => {
       },
     );
 
-    const data = await response.json();
+    const data: any = await response.json();
 
     if (data?.errors) {
       console.error(
@@ -1450,8 +1453,6 @@ export default function Index() {
                   <option value="20">Show 20 orders</option>
                   <option value="50">Show 50 orders</option>
                   <option value="100">Show 100 orders</option>
-                  <option value="250">Show 250 orders</option>
-                  <option value="1000">Show all loaded</option>
                 </select>
 
                 <button className="button-secondary" onClick={toggleAll}>
