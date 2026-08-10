@@ -54,8 +54,12 @@ export default defineConfig({
   ],
   build: {
     assetsInlineLimit: 0,
+    rollupOptions: {
+      external: [/^@shopify\/shopify-api($|\/)/],
+    },
   },
   optimizeDeps: {
     include: ["@shopify/app-bridge-react"],
+    exclude: [/^@shopify\/shopify-api($|\/)/],
   },
 }) satisfies UserConfig;

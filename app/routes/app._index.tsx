@@ -2087,7 +2087,7 @@ function isChecklistExcludedParentItem(item: LineItem) {
 }
 
 function getLineItemQuantity(item: LineItem) {
-  return Number(item.currentQuantity ?? 0);
+  return Number(item.unfulfilledQuantity ?? item.currentQuantity ?? 0);
 }
 
 function getLineItemDisplayName(item: LineItem) {
