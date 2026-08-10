@@ -570,7 +570,6 @@ export default function Index() {
       if (!search) {
         return true;
       }
-
       const searchableText = normalizeSearchText(
         [
           order.id,
