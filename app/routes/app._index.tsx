@@ -573,6 +573,7 @@ export default function Index() {
 
       const searchableText = normalizeSearchText(
         [
+          order.id,
           order.name,
           order.customerName,
           order.deliveryDate,
