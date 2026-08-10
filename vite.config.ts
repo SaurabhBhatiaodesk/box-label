@@ -60,6 +60,6 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: ["@shopify/app-bridge-react"],
-    exclude: [/^@shopify\/shopify-api($|\/)/],
+    exclude: ["@shopify/shopify-api"],
   },
 }) satisfies UserConfig;
