@@ -3117,7 +3117,6 @@ function getPageCss(printMode: PrintMode) {
       }
     `;
   }
-
   if (printMode === "localPackingSlip" || printMode === "courierPackingSlip") {
     return `
       @page {
