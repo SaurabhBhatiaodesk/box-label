@@ -580,110 +580,49 @@ export default function Index() {
     return Array.from(map.values());
   }, [orders, lookupOrders]);
 
-  const filteredOrders = useMemo(() => {
-    const rawSearch = deliveryDateSearch.trim();
-    const search = normalizeSearchText(rawSearch);
-    const numberMatch = rawSearch.match(/^#?(\d+)$/);
-    const numericSearch = numberMatch ? numberMatch[1] : null;
-    const searchDate = parseFlexibleDate(rawSearch);
-
-    return allOrders.filter((order) => {
-      const routeText = normalizeSearchText(order.easyRoutesRoute);
-      const isCourierRoute = routeText.includes("courier");
-
-      if (routeCourierFilter === "local" && isCourierRoute) {
-        return false;
-      }
-
-      if (routeCourierFilter === "courier" && !isCourierRoute) {
-        return false;
-      }
-
-      if (!search) {
-        return true;
-      }
-
-      const orderNameDigits = normalizeSearchText(order.name).replace(/\s/g, "");
-
-      if (numericSearch) {
-        return (
-          orderNameDigits === numericSearch ||
-          orderNameDigits.includes(numericSearch) ||
-          normalizeSearchText(order.id).includes(numericSearch)
-        );
-      }
-
-      const searchableText = normalizeSearchText(
-        [
-          order.id,
-          order.name,
-          order.customerName,
-          order.deliveryDate,
-          order.deliveryDay,
-          order.deliveryMethod,
-          order.easyRoutesRoute,
-          order.easyRoutesRouteStart,
-          order.easyRoutesStopEta,
-          order.driverName,
-          formatShippingAddress(order),
-        ].join(" "),
-      );
-
-      if (searchableText.includes(search)) {
-        return true;
-      }
-
-      // Match dates across formats (21/05/2026 vs May 21, 2026 vs 2026-05-21)
-      if (searchDate) {
-        const orderDates = [
-          order.deliveryDate,
-          order.deliveryDay,
-          order.easyRoutesRouteStart,
-          order.easyRoutesStopEta,
-          order.easyRoutesRoute,
-        ];
-
-        if (
-          orderDates.some((value) => {
-            const parsed = parseFlexibleDate(value);
-            return parsed ? sameDate(parsed, searchDate) : false;
-          })
-        ) {
-          return true;
-        }
-      }
-
-      // Token match so "Trevor May" still works when fields are split
-      const tokens = search.split(/\s+/).filter(Boolean);
-      return tokens.length > 0 && tokens.every((token) => searchableText.includes(token));
-    });
-  }, [allOrders, deliveryDateSearch, routeCourierFilter]);
+  // Keep filtering plain (no useMemo) so search state always applies on each render.
+  const filteredOrders = allOrders.filter((order) =>
+    orderMatchesSearch(order, deliveryDateSearch, routeCourierFilter),
+  );
 
   // When user types an order-number (e.g. "#127210" or "127210"), do a server-side lookup.
-  // Route file app.order.lookup.ts maps to /app/order/lookup (dot → slash in fs-routes).
   useEffect(() => {
-    const m = (deliveryDateSearch || "").trim().match(/^#?(\d+)$/);
-    if (!m) {
+    const orderNumber = extractOrderNumberQuery(deliveryDateSearch);
+    if (!orderNumber) {
       setLookupOrders([]);
       return;
     }
 
-    lookupFetcher.load(`/app/order/lookup?q=${encodeURIComponent(m[1])}`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run on search text
+    const handle = window.setTimeout(() => {
+      lookupFetcher.load(
+        `/app/order/lookup?q=${encodeURIComponent(orderNumber)}`,
+      );
+    }, 250);
+
+    return () => window.clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only search text
   }, [deliveryDateSearch]);
 
   useEffect(() => {
     if (lookupFetcher.state !== "idle") return;
     if (!lookupFetcher.data) return;
 
-    const rawSearch = (deliveryDateSearch || "").trim();
-    if (!/^#?\d+$/.test(rawSearch)) {
+    const orderNumber = extractOrderNumberQuery(deliveryDateSearch);
+    if (!orderNumber) {
       setLookupOrders([]);
       return;
     }
 
-    if (lookupFetcher.data.order) {
-      setLookupOrders([lookupFetcher.data.order]);
+    const found = lookupFetcher.data.order;
+    if (!found) {
+      setLookupOrders([]);
+      return;
+    }
+
+    // Only keep the lookup hit if it actually matches the typed order number.
+    const foundDigits = String(found.name || "").replace(/\D/g, "");
+    if (foundDigits === orderNumber || foundDigits.endsWith(orderNumber)) {
+      setLookupOrders([found]);
     } else {
       setLookupOrders([]);
     }
@@ -1565,18 +1504,25 @@ export default function Index() {
             <div className="search-row">
               <div className="field">
                 <label htmlFor="deliveryDateSearch">
-                  Search by delivery date / EasyRoutes date / driver
+                  Search by order # / delivery date / EasyRoutes date / driver
                 </label>
                 <input
                   id="deliveryDateSearch"
                   className="search-input"
-                  type="text"
+                  type="search"
+                  autoComplete="off"
+                  spellCheck={false}
                   value={deliveryDateSearch}
                   onChange={(event) => {
                     setDeliveryDateSearch(event.target.value);
                     setSelectedIds([]);
                   }}
-                  placeholder="Example: 21/05/2026 / May 21, 2026 / Trevor"
+                  onInput={(event) => {
+                    const nextValue = (event.target as HTMLInputElement).value;
+                    setDeliveryDateSearch(nextValue);
+                    setSelectedIds([]);
+                  }}
+                  placeholder="Example: #127210 / 21/05/2026 / Trevor"
                 />
               </div>
 
@@ -3193,6 +3139,90 @@ function normalizeSearchText(value: string) {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function extractOrderNumberQuery(value: string) {
+  const raw = (value || "").trim();
+  const match = raw.match(/^#?(\d+)$/);
+  return match ? match[1] : null;
+}
+
+function orderMatchesSearch(
+  order: Order,
+  rawInput: string,
+  routeCourierFilter: "all" | "local" | "courier",
+) {
+  const routeText = normalizeSearchText(order.easyRoutesRoute);
+  const isCourierRoute = routeText.includes("courier");
+
+  if (routeCourierFilter === "local" && isCourierRoute) {
+    return false;
+  }
+
+  if (routeCourierFilter === "courier" && !isCourierRoute) {
+    return false;
+  }
+
+  const rawSearch = (rawInput || "").trim();
+  if (!rawSearch) {
+    return true;
+  }
+
+  // Exact order-number match only (#127210 / 127210). Never match against Shopify GID.
+  const orderNumber = extractOrderNumberQuery(rawSearch);
+  if (orderNumber) {
+    const nameDigits = String(order.name || "").replace(/\D/g, "");
+    return nameDigits === orderNumber;
+  }
+
+  const searchDate = parseFlexibleDate(rawSearch);
+  if (searchDate) {
+    const dateFields = [
+      order.deliveryDate,
+      order.deliveryDay,
+      order.easyRoutesRouteStart,
+      order.easyRoutesStopEta,
+      order.easyRoutesRoute,
+    ];
+
+    if (
+      dateFields.some((value) => {
+        const parsed = parseFlexibleDate(value || "");
+        return parsed ? sameDate(parsed, searchDate) : false;
+      })
+    ) {
+      return true;
+    }
+  }
+
+  const search = normalizeSearchText(rawSearch);
+  if (!search) {
+    return true;
+  }
+
+  const searchableText = normalizeSearchText(
+    [
+      order.name,
+      order.customerName,
+      order.deliveryDate,
+      order.deliveryDay,
+      order.deliveryMethod,
+      order.easyRoutesRoute,
+      order.easyRoutesRouteStart,
+      order.easyRoutesStopEta,
+      order.driverName,
+      formatShippingAddress(order),
+    ].join(" "),
+  );
+
+  if (searchableText.includes(search)) {
+    return true;
+  }
+
+  const tokens = search.split(/\s+/).filter(Boolean);
+  return (
+    tokens.length > 0 && tokens.every((token) => searchableText.includes(token))
+  );
 }
 
 const MONTH_INDEX: Record<string, number> = {
