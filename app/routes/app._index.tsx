@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useFetcher, useLoaderData, useRevalidator } from "react-router";
+import { useLoaderData, useRevalidator } from "react-router";
 import { authenticate } from "../shopify.server";
 
 const LOGO_URL =
@@ -7,10 +7,8 @@ const LOGO_URL =
 
 const SUPPORT_PHONE = "0480 079 218";
 const PACKING_SLIP_WORD_FONT_SIZE = 21;
-// Keep this low to avoid Heroku H12 (30s) timeouts. Older orders are found via /app/order/lookup.
-const ORDERS_FETCH_LIMIT = 250;
-const ORDERS_PAGE_SIZE = 50;
-const ORDERS_LOADER_BUDGET_MS = 20000;
+const ORDERS_FETCH_LIMIT = 1500;
+const ORDERS_PAGE_SIZE = 100;
 
 type PrintMode =
   | "labels"
@@ -87,26 +85,15 @@ export const loader = async ({ request }: { request: Request }) => {
   const allEdges: any[] = [];
   let hasNextPage = true;
   let cursor: string | null = null;
-  const startedAt = Date.now();
 
   while (hasNextPage && allEdges.length < ORDERS_FETCH_LIMIT) {
-    // Stop early so Heroku's 30s router timeout is never hit.
-    if (Date.now() - startedAt > ORDERS_LOADER_BUDGET_MS) {
-      console.warn(
-        `Orders loader budget exceeded after ${allEdges.length} orders; returning partial list.`,
-      );
-      break;
-    }
-
     const first = Math.min(
       ORDERS_PAGE_SIZE,
       ORDERS_FETCH_LIMIT - allEdges.length,
     );
 
-    let data: any = null;
-    try {
-      const response: any = await admin.graphql(
-        `#graphql
+    const response = await admin.graphql(
+      `#graphql
         query GetOrders($first: Int!, $after: String) {
           orders(first: $first, after: $after, sortKey: CREATED_AT, reverse: true, query: "status:any") {
             edges {
@@ -149,7 +136,7 @@ export const loader = async ({ request }: { request: Request }) => {
                   value
                 }
 
-                lineItems(first: 50) {
+                lineItems(first: 100) {
                   edges {
                     node {
                       id
@@ -180,27 +167,21 @@ export const loader = async ({ request }: { request: Request }) => {
           }
         }
       `,
-        {
-          variables: {
-            first,
-            after: cursor,
-          },
+      {
+        variables: {
+          first,
+          after: cursor,
         },
+      },
+    );
+
+    const data = await response.json();
+
+    if (data?.errors) {
+      console.error(
+        "Shopify GraphQL errors:",
+        JSON.stringify(data.errors, null, 2),
       );
-
-      data = await response.json();
-
-      if (data?.errors) {
-        console.error(
-          "Shopify GraphQL errors:",
-          JSON.stringify(data.errors, null, 2),
-        );
-        // Stop fetching more pages but continue with whatever we have so app doesn't crash.
-        break;
-      }
-    } catch (err) {
-      console.error("GraphQL fetch failed:", err);
-      // Break out to avoid crashing the server on transient API errors.
       break;
     }
 
@@ -561,72 +542,47 @@ export default function Index() {
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [ordersLimit, setOrdersLimit] = useState("20");
-  const [lookupOrders, setLookupOrders] = useState<Order[]>([]);
   const [printMode, setPrintMode] = useState<PrintMode>("labels");
-  // Local-only search — never touch URL params (Shopify session breaks otherwise).
-  const [searchDraft, setSearchDraft] = useState("");
+  const [deliveryDateSearch, setDeliveryDateSearch] = useState("");
   const [routeCourierFilter, setRouteCourierFilter] = useState<
     "all" | "local" | "courier"
   >("all");
 
-  const lookupFetcher = useFetcher<{ order: Order | null }>();
+  const filteredOrders = useMemo(() => {
+    const search = normalizeSearchText(deliveryDateSearch);
 
-  // Prefer loader orders (richer fields). Only append lookup hits that are missing.
-  const allOrders = useMemo(() => {
-    const map = new Map<string, Order>();
-    orders.forEach((o) => map.set(o.id, o));
-    lookupOrders.forEach((o) => {
-      if (!map.has(o.id)) map.set(o.id, o);
-    });
-    return Array.from(map.values());
-  }, [orders, lookupOrders]);
+    return orders.filter((order) => {
+      const routeText = normalizeSearchText(order.easyRoutesRoute);
+      const isCourierRoute = routeText.includes("courier");
 
-  const filteredOrders = allOrders.filter((order) =>
-    orderMatchesSearch(order, searchDraft, routeCourierFilter),
-  );
+      if (routeCourierFilter === "local" && isCourierRoute) {
+        return false;
+      }
 
-  // When user types an order-number (e.g. "#127210" or "127210"), do a server-side lookup.
-  useEffect(() => {
-    const orderNumber = extractOrderNumberQuery(searchDraft);
-    if (!orderNumber) {
-      setLookupOrders([]);
-      return;
-    }
+      if (routeCourierFilter === "courier" && !isCourierRoute) {
+        return false;
+      }
 
-    const handle = window.setTimeout(() => {
-      lookupFetcher.load(
-        `/app/order/lookup?q=${encodeURIComponent(orderNumber)}`,
+      if (!search) {
+        return true;
+      }
+
+      const searchableText = normalizeSearchText(
+        [
+          order.name,
+          order.customerName,
+          order.deliveryDate,
+          order.deliveryDay,
+          order.deliveryMethod,
+          order.easyRoutesRoute,
+          order.driverName,
+          formatShippingAddress(order),
+        ].join(" "),
       );
-    }, 250);
 
-    return () => window.clearTimeout(handle);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only search text
-  }, [searchDraft]);
-
-  useEffect(() => {
-    if (lookupFetcher.state !== "idle") return;
-    if (!lookupFetcher.data) return;
-
-    const orderNumber = extractOrderNumberQuery(searchDraft);
-    if (!orderNumber) {
-      setLookupOrders([]);
-      return;
-    }
-
-    const found = lookupFetcher.data.order;
-    if (!found) {
-      setLookupOrders([]);
-      return;
-    }
-
-    // Only keep the lookup hit if it actually matches the typed order number.
-    const foundDigits = String(found.name || "").replace(/\D/g, "");
-    if (foundDigits === orderNumber || foundDigits.endsWith(orderNumber)) {
-      setLookupOrders([found]);
-    } else {
-      setLookupOrders([]);
-    }
-  }, [lookupFetcher.state, lookupFetcher.data, searchDraft]);
+      return searchableText.includes(search);
+    });
+  }, [orders, deliveryDateSearch, routeCourierFilter]);
 
   const visibleOrders = useMemo(() => {
     return filteredOrders.slice(0, Number(ordersLimit));
@@ -703,6 +659,9 @@ export default function Index() {
 
         .app-root {
           min-height: 100vh;
+          background: #f6f6f7;
+          color: #202223;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
         }
 
         .screen-area {
@@ -1491,6 +1450,8 @@ export default function Index() {
                   <option value="20">Show 20 orders</option>
                   <option value="50">Show 50 orders</option>
                   <option value="100">Show 100 orders</option>
+                  <option value="250">Show 250 orders</option>
+                  <option value="1000">Show all loaded</option>
                 </select>
 
                 <button className="button-secondary" onClick={toggleAll}>
@@ -1504,20 +1465,18 @@ export default function Index() {
             <div className="search-row">
               <div className="field">
                 <label htmlFor="deliveryDateSearch">
-                  Search by order # / delivery date / EasyRoutes date / driver
+                  Search by delivery date / EasyRoutes date / driver
                 </label>
                 <input
                   id="deliveryDateSearch"
                   className="search-input"
                   type="text"
-                  autoComplete="off"
-                  spellCheck={false}
-                  value={searchDraft}
+                  value={deliveryDateSearch}
                   onChange={(event) => {
-                    setSearchDraft(event.target.value);
+                    setDeliveryDateSearch(event.target.value);
                     setSelectedIds([]);
                   }}
-                  placeholder="Example: #127210 / 21/05/2026 / Trevor"
+                  placeholder="Example: 21/05/2026 / May 21, 2026 / Trevor"
                 />
               </div>
 
@@ -1550,7 +1509,7 @@ export default function Index() {
                 className="button-secondary"
                 type="button"
                 onClick={() => {
-                  setSearchDraft("");
+                  setDeliveryDateSearch("");
                   setRouteCourierFilter("all");
                   setSelectedIds([]);
                 }}
@@ -1560,7 +1519,7 @@ export default function Index() {
             </div>
 
             {visibleOrders.length === 0 ? (
-              <div className="empty-state">Not found.</div>
+              <div className="empty-state">No orders found.</div>
             ) : (
               <div className="table-wrap">
                 <table className="data-table">
@@ -2127,7 +2086,7 @@ function isChecklistExcludedParentItem(item: LineItem) {
 }
 
 function getLineItemQuantity(item: LineItem) {
-  return Number(item.unfulfilledQuantity ?? item.currentQuantity ?? 0);
+  return Number(item.currentQuantity ?? 0);
 }
 
 function getLineItemDisplayName(item: LineItem) {
@@ -3128,188 +3087,7 @@ function normalizeKey(value: string) {
 }
 
 function normalizeSearchText(value: string) {
-  return (value || "")
-    .toLowerCase()
-    .replace(/#/g, "")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function extractOrderNumberQuery(value: string) {
-  const raw = (value || "").trim();
-  const match = raw.match(/^#?(\d+)$/);
-  return match ? match[1] : null;
-}
-
-function orderMatchesSearch(
-  order: Order,
-  rawInput: string,
-  routeCourierFilter: "all" | "local" | "courier",
-) {
-  const routeText = normalizeSearchText(order.easyRoutesRoute);
-  const isCourierRoute = routeText.includes("courier");
-
-  if (routeCourierFilter === "local" && isCourierRoute) {
-    return false;
-  }
-
-  if (routeCourierFilter === "courier" && !isCourierRoute) {
-    return false;
-  }
-
-  const rawSearch = (rawInput || "").trim();
-  if (!rawSearch) {
-    return true;
-  }
-
-  // Exact order-number match only (#127210 / 127210). Never match against Shopify GID.
-  const orderNumber = extractOrderNumberQuery(rawSearch);
-  if (orderNumber) {
-    const nameDigits = String(order.name || "").replace(/\D/g, "");
-    return nameDigits === orderNumber;
-  }
-
-  const searchDate = parseFlexibleDate(rawSearch);
-  if (searchDate) {
-    const dateFields = [
-      order.deliveryDate,
-      order.deliveryDay,
-      order.easyRoutesRouteStart,
-      order.easyRoutesStopEta,
-      order.easyRoutesRoute,
-    ];
-
-    if (
-      dateFields.some((value) => {
-        const parsed = parseFlexibleDate(value || "");
-        return parsed ? sameDate(parsed, searchDate) : false;
-      })
-    ) {
-      return true;
-    }
-  }
-
-  const search = normalizeSearchText(rawSearch);
-  if (!search) {
-    return true;
-  }
-
-  const searchableText = normalizeSearchText(
-    [
-      order.name,
-      order.customerName,
-      order.deliveryDate,
-      order.deliveryDay,
-      order.deliveryMethod,
-      order.easyRoutesRoute,
-      order.easyRoutesRouteStart,
-      order.easyRoutesStopEta,
-      order.driverName,
-      formatShippingAddress(order),
-    ].join(" "),
-  );
-
-  if (searchableText.includes(search)) {
-    return true;
-  }
-
-  const tokens = search.split(/\s+/).filter(Boolean);
-  return (
-    tokens.length > 0 && tokens.every((token) => searchableText.includes(token))
-  );
-}
-
-const MONTH_INDEX: Record<string, number> = {
-  jan: 1,
-  january: 1,
-  feb: 2,
-  february: 2,
-  mar: 3,
-  march: 3,
-  apr: 4,
-  april: 4,
-  may: 5,
-  jun: 6,
-  june: 6,
-  jul: 7,
-  july: 7,
-  aug: 8,
-  august: 8,
-  sep: 9,
-  sept: 9,
-  september: 9,
-  oct: 10,
-  october: 10,
-  nov: 11,
-  november: 11,
-  dec: 12,
-  december: 12,
-};
-
-type ParsedDate = { year: number; month: number; day: number };
-
-function parseFlexibleDate(value: string): ParsedDate | null {
-  const raw = (value || "").trim();
-  if (!raw) return null;
-
-  // ISO / Shopify: 2026-05-21 or 2026-05-21T08:00:00
-  let match = raw.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (match) {
-    return {
-      year: Number(match[1]),
-      month: Number(match[2]),
-      day: Number(match[3]),
-    };
-  }
-
-  // AU style DMY: 21/05/2026, 21-05-2026, 21.05.2026
-  match = raw.match(/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b/);
-  if (match) {
-    let year = Number(match[3]);
-    if (year < 100) year += 2000;
-    return {
-      year,
-      month: Number(match[2]),
-      day: Number(match[1]),
-    };
-  }
-
-  // May 21, 2026 / May 21 2026 / Thu, May 21, 2026
-  match = raw.match(
-    /\b([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/,
-  );
-  if (match) {
-    const month = MONTH_INDEX[match[1].toLowerCase()];
-    if (month) {
-      return {
-        year: Number(match[3]),
-        month,
-        day: Number(match[2]),
-      };
-    }
-  }
-
-  // 21 May 2026
-  match = raw.match(
-    /\b(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+),?\s+(\d{4})\b/,
-  );
-  if (match) {
-    const month = MONTH_INDEX[match[2].toLowerCase()];
-    if (month) {
-      return {
-        year: Number(match[3]),
-        month,
-        day: Number(match[1]),
-      };
-    }
-  }
-
-  return null;
-}
-
-function sameDate(a: ParsedDate, b: ParsedDate) {
-  return a.year === b.year && a.month === b.month && a.day === b.day;
+  return value.toLowerCase().replace(/,/g, "").replace(/\s+/g, " ").trim();
 }
 
 function chunkArray<T>(array: T[], size: number): T[][] {
