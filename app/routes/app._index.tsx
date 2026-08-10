@@ -1,11 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  useFetcher,
-  useLoaderData,
-  useRevalidator,
-  useSearchParams,
-  useSubmit,
-} from "react-router";
+import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import { authenticate } from "../shopify.server";
 
 const LOGO_URL =
@@ -569,43 +563,11 @@ export default function Index() {
   const [ordersLimit, setOrdersLimit] = useState("20");
   const [lookupOrders, setLookupOrders] = useState<Order[]>([]);
   const [printMode, setPrintMode] = useState<PrintMode>("labels");
-  const [searchParams, setSearchParams] = useSearchParams();
-  const submit = useSubmit();
-
-  // URL is the source of truth — survives Shopify iframe input/state bugs.
-  const deliveryDateSearch = searchParams.get("q") || "";
-  const routeCourierFilter = (
-    searchParams.get("route") === "local" ||
-    searchParams.get("route") === "courier"
-      ? searchParams.get("route")
-      : "all"
-  ) as "all" | "local" | "courier";
-
-  // Local draft so typing feels instant; URL updates on debounce for filtering.
-  const [searchDraft, setSearchDraft] = useState(deliveryDateSearch);
-
-  useEffect(() => {
-    setSearchDraft(deliveryDateSearch);
-  }, [deliveryDateSearch]);
-
-  useEffect(() => {
-    const handle = window.setTimeout(() => {
-      const nextQ = searchDraft.trim();
-      const currentQ = (searchParams.get("q") || "").trim();
-      if (nextQ === currentQ) return;
-
-      const next = new URLSearchParams(searchParams);
-      if (nextQ) next.set("q", nextQ);
-      else next.delete("q");
-      if (routeCourierFilter !== "all") next.set("route", routeCourierFilter);
-      else next.delete("route");
-
-      setSearchParams(next, { replace: true });
-      setSelectedIds([]);
-    }, 300);
-
-    return () => window.clearTimeout(handle);
-  }, [searchDraft, searchParams, routeCourierFilter, setSearchParams]);
+  // Local-only search — never touch URL params (Shopify session breaks otherwise).
+  const [searchDraft, setSearchDraft] = useState("");
+  const [routeCourierFilter, setRouteCourierFilter] = useState<
+    "all" | "local" | "courier"
+  >("all");
 
   const lookupFetcher = useFetcher<{ order: Order | null }>();
 
@@ -1539,16 +1501,7 @@ export default function Index() {
               </div>
             </div>
 
-            <form
-              className="search-row"
-              method="get"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const formData = new FormData(event.currentTarget);
-                submit(formData, { method: "get", replace: true });
-                setSelectedIds([]);
-              }}
-            >
+            <div className="search-row">
               <div className="field">
                 <label htmlFor="deliveryDateSearch">
                   Search by order # / delivery date / EasyRoutes date / driver
@@ -1557,12 +1510,12 @@ export default function Index() {
                   id="deliveryDateSearch"
                   className="search-input"
                   type="text"
-                  name="q"
                   autoComplete="off"
                   spellCheck={false}
                   value={searchDraft}
                   onChange={(event) => {
                     setSearchDraft(event.target.value);
+                    setSelectedIds([]);
                   }}
                   placeholder="Example: #127210 / 21/05/2026 / Trevor"
                 />
@@ -1575,19 +1528,11 @@ export default function Index() {
                 <select
                   id="routeCourierFilter"
                   className="select-box"
-                  name="route"
                   value={routeCourierFilter}
                   onChange={(event) => {
-                    const nextRoute = event.target.value as
-                      | "all"
-                      | "local"
-                      | "courier";
-                    const next = new URLSearchParams(searchParams);
-                    if (searchDraft.trim()) next.set("q", searchDraft.trim());
-                    else next.delete("q");
-                    if (nextRoute === "all") next.delete("route");
-                    else next.set("route", nextRoute);
-                    setSearchParams(next, { replace: true });
+                    setRouteCourierFilter(
+                      event.target.value as "all" | "local" | "courier",
+                    );
                     setSelectedIds([]);
                   }}
                 >
@@ -1606,13 +1551,13 @@ export default function Index() {
                 type="button"
                 onClick={() => {
                   setSearchDraft("");
-                  setSearchParams({}, { replace: true });
+                  setRouteCourierFilter("all");
                   setSelectedIds([]);
                 }}
               >
                 Clear Search
               </button>
-            </form>
+            </div>
 
             {visibleOrders.length === 0 ? (
               <div className="empty-state">Not found.</div>
