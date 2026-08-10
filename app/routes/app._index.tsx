@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import {
   AppProvider as PolarisAppProvider,
+  Button,
+  ButtonGroup,
   Card,
-  IndexFilters,
-  IndexFiltersMode,
-  useSetIndexFiltersMode,
+  InlineStack,
+  TextField,
 } from "@shopify/polaris";
 import enTranslations from "@shopify/polaris/locales/en.json";
 import "@shopify/polaris/build/esm/styles.css";
@@ -615,37 +616,10 @@ export default function Index() {
     }
   }, [lookupFetcher.state, lookupFetcher.data, deliveryDateSearch]);
 
-  const { mode, setMode } = useSetIndexFiltersMode(IndexFiltersMode.Filtering);
-
-  const routeTabs = [
-    { content: "All", id: "all-orders" },
-    { content: "Local", id: "local-orders" },
-    { content: "Courier", id: "courier-orders" },
-  ];
-
-  const selectedRouteTab =
-    routeCourierFilter === "local"
-      ? 1
-      : routeCourierFilter === "courier"
-        ? 2
-        : 0;
-
-  const appliedPolarisFilters =
-    routeCourierFilter === "all"
-      ? []
-      : [
-          {
-            key: "route",
-            label:
-              routeCourierFilter === "local"
-                ? "Route: Local"
-                : "Route: Courier",
-            onRemove: () => {
-              setRouteCourierFilter("all");
-              setSelectedIds([]);
-            },
-          },
-        ];
+  const applySearchValue = (value: string) => {
+    setDeliveryDateSearch(value);
+    setSelectedIds([]);
+  };
 
   const visibleOrders = useMemo(() => {
     return filteredOrders.slice(0, Number(ordersLimit));
@@ -1532,44 +1506,58 @@ export default function Index() {
 
             <div className="search-row polaris-search-row">
               <PolarisAppProvider i18n={enTranslations}>
-                <Card padding="0">
-                  <IndexFilters
-                    mode={mode}
-                    setMode={setMode}
-                    tabs={routeTabs}
-                    selected={selectedRouteTab}
-                    onSelect={(selectedTabIndex) => {
-                      const nextRoute =
-                        selectedTabIndex === 1
-                          ? "local"
-                          : selectedTabIndex === 2
-                            ? "courier"
-                            : "all";
-                      setRouteCourierFilter(nextRoute);
-                      setSelectedIds([]);
-                    }}
-                    filters={[]}
-                    appliedFilters={appliedPolarisFilters}
-                    queryValue={deliveryDateSearch}
-                    queryPlaceholder="Search order #, customer, driver, or date"
-                    onQueryChange={(value) => {
-                      setDeliveryDateSearch(value);
-                      setSelectedIds([]);
-                    }}
-                    onQueryClear={() => {
-                      setDeliveryDateSearch("");
-                      setSelectedIds([]);
-                    }}
-                    onClearAll={() => {
-                      setDeliveryDateSearch("");
-                      setRouteCourierFilter("all");
-                      setSelectedIds([]);
-                    }}
-                    canCreateNewView={false}
-                    autoFocusSearchField
-                    disableKeyboardShortcuts
-                    filteringAccessibilityLabel="Search orders"
+                <Card>
+                  <TextField
+                    label="Search orders"
+                    labelHidden
+                    value={deliveryDateSearch}
+                    onChange={applySearchValue}
+                    onClearButtonClick={() => applySearchValue("")}
+                    clearButton
+                    autoComplete="off"
+                    placeholder="Search order #, customer, driver, or date"
                   />
+                  <div style={{ marginTop: 12 }}>
+                    <InlineStack align="space-between" blockAlign="center" wrap>
+                      <ButtonGroup variant="segmented">
+                        <Button
+                          pressed={routeCourierFilter === "all"}
+                          onClick={() => {
+                            setRouteCourierFilter("all");
+                            setSelectedIds([]);
+                          }}
+                        >
+                          All
+                        </Button>
+                        <Button
+                          pressed={routeCourierFilter === "local"}
+                          onClick={() => {
+                            setRouteCourierFilter("local");
+                            setSelectedIds([]);
+                          }}
+                        >
+                          Local
+                        </Button>
+                        <Button
+                          pressed={routeCourierFilter === "courier"}
+                          onClick={() => {
+                            setRouteCourierFilter("courier");
+                            setSelectedIds([]);
+                          }}
+                        >
+                          Courier
+                        </Button>
+                      </ButtonGroup>
+                      <Button
+                        onClick={() => {
+                          applySearchValue("");
+                          setRouteCourierFilter("all");
+                        }}
+                      >
+                        Clear
+                      </Button>
+                    </InlineStack>
+                  </div>
                 </Card>
               </PolarisAppProvider>
             </div>
