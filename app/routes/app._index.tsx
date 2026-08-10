@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
+import {
+  AppProvider as PolarisAppProvider,
+  ChoiceList,
+  Filters,
+} from "@shopify/polaris";
+import enTranslations from "@shopify/polaris/locales/en.json";
+import "@shopify/polaris/build/esm/styles.css";
 import { authenticate } from "../shopify.server";
 
 const LOGO_URL =
@@ -7,8 +14,8 @@ const LOGO_URL =
 
 const SUPPORT_PHONE = "0480 079 218";
 const PACKING_SLIP_WORD_FONT_SIZE = 21;
-const ORDERS_FETCH_LIMIT = 1500;
-const ORDERS_PAGE_SIZE = 100;
+const ORDERS_FETCH_LIMIT = 250;
+const ORDERS_PAGE_SIZE = 50;
 
 type PrintMode =
   | "labels"
@@ -549,7 +556,9 @@ export default function Index() {
   >("all");
 
   const filteredOrders = useMemo(() => {
-    const search = normalizeSearchText(deliveryDateSearch);
+    const rawSearch = deliveryDateSearch.trim();
+    const search = normalizeSearchText(rawSearch);
+    const orderNumber = extractOrderNumberQuery(rawSearch);
 
     return orders.filter((order) => {
       const routeText = normalizeSearchText(order.easyRoutesRoute);
@@ -561,6 +570,15 @@ export default function Index() {
 
       if (routeCourierFilter === "courier" && !isCourierRoute) {
         return false;
+      }
+
+      if (!rawSearch) {
+        return true;
+      }
+
+      if (orderNumber) {
+        const nameDigits = String(order.name || "").replace(/\D/g, "");
+        return nameDigits === orderNumber;
       }
 
       if (!search) {
@@ -580,9 +598,65 @@ export default function Index() {
         ].join(" "),
       );
 
-      return searchableText.includes(search);
+      if (searchableText.includes(search)) {
+        return true;
+      }
+
+      return search
+        .split(/\s+/)
+        .filter(Boolean)
+        .every((token) => searchableText.includes(token));
     });
   }, [orders, deliveryDateSearch, routeCourierFilter]);
+
+  const polarisFilters = [
+    {
+      key: "route",
+      label: "EasyRoutes Route",
+      filter: (
+        <ChoiceList
+          title="EasyRoutes Route"
+          titleHidden
+          choices={[
+            { label: "All routes", value: "all" },
+            {
+              label: "Local orders - route does not contain Courier",
+              value: "local",
+            },
+            {
+              label: "Courier orders - route contains Courier",
+              value: "courier",
+            },
+          ]}
+          selected={[routeCourierFilter]}
+          onChange={(selected) => {
+            setRouteCourierFilter(
+              (selected[0] as "all" | "local" | "courier") || "all",
+            );
+            setSelectedIds([]);
+          }}
+        />
+      ),
+      shortcut: true,
+    },
+  ];
+
+  const appliedPolarisFilters =
+    routeCourierFilter === "all"
+      ? []
+      : [
+          {
+            key: "route",
+            label:
+              routeCourierFilter === "local"
+                ? "Route: Local"
+                : "Route: Courier",
+            onRemove: () => {
+              setRouteCourierFilter("all");
+              setSelectedIds([]);
+            },
+          },
+        ];
 
   const visibleOrders = useMemo(() => {
     return filteredOrders.slice(0, Number(ordersLimit));
@@ -787,6 +861,11 @@ export default function Index() {
           grid-template-columns: minmax(240px, 1fr) minmax(220px, 280px) auto;
           gap: 12px;
           align-items: end;
+        }
+
+        .polaris-search-row {
+          display: block;
+          grid-template-columns: none;
         }
 
         .field label {
@@ -1462,60 +1541,28 @@ export default function Index() {
               </div>
             </div>
 
-            <div className="search-row">
-              <div className="field">
-                <label htmlFor="deliveryDateSearch">
-                  Search by delivery date / EasyRoutes date / driver
-                </label>
-                <input
-                  id="deliveryDateSearch"
-                  className="search-input"
-                  type="text"
-                  value={deliveryDateSearch}
-                  onChange={(event) => {
-                    setDeliveryDateSearch(event.target.value);
+            <div className="search-row polaris-search-row">
+              <PolarisAppProvider i18n={enTranslations}>
+                <Filters
+                  queryValue={deliveryDateSearch}
+                  queryPlaceholder="Search order #, customer, driver, date…"
+                  filters={polarisFilters}
+                  appliedFilters={appliedPolarisFilters}
+                  onQueryChange={(value) => {
+                    setDeliveryDateSearch(value);
                     setSelectedIds([]);
                   }}
-                  placeholder="Example: 21/05/2026 / May 21, 2026 / Trevor"
+                  onQueryClear={() => {
+                    setDeliveryDateSearch("");
+                    setSelectedIds([]);
+                  }}
+                  onClearAll={() => {
+                    setDeliveryDateSearch("");
+                    setRouteCourierFilter("all");
+                    setSelectedIds([]);
+                  }}
                 />
-              </div>
-
-              <div className="field">
-                <label htmlFor="routeCourierFilter">
-                  EasyRoutes Route filter
-                </label>
-                <select
-                  id="routeCourierFilter"
-                  className="select-box"
-                  value={routeCourierFilter}
-                  onChange={(event) => {
-                    setRouteCourierFilter(
-                      event.target.value as "all" | "local" | "courier",
-                    );
-                    setSelectedIds([]);
-                  }}
-                >
-                  <option value="all">All routes</option>
-                  <option value="local">
-                    Local orders - route does not contain Courier
-                  </option>
-                  <option value="courier">
-                    Courier orders - route contains Courier
-                  </option>
-                </select>
-              </div>
-
-              <button
-                className="button-secondary"
-                type="button"
-                onClick={() => {
-                  setDeliveryDateSearch("");
-                  setRouteCourierFilter("all");
-                  setSelectedIds([]);
-                }}
-              >
-                Clear Search
-              </button>
+              </PolarisAppProvider>
             </div>
 
             {visibleOrders.length === 0 ? (
@@ -3087,7 +3134,18 @@ function normalizeKey(value: string) {
 }
 
 function normalizeSearchText(value: string) {
-  return value.toLowerCase().replace(/,/g, "").replace(/\s+/g, " ").trim();
+  return (value || "")
+    .toLowerCase()
+    .replace(/#/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractOrderNumberQuery(value: string) {
+  const raw = (value || "").trim();
+  const match = raw.match(/^#?(\d+)$/);
+  return match ? match[1] : null;
 }
 
 function chunkArray<T>(array: T[], size: number): T[][] {
