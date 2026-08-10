@@ -1,15 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, useLoaderData, useRevalidator } from "react-router";
-import {
-  AppProvider as PolarisAppProvider,
-  Button,
-  ButtonGroup,
-  Card,
-  InlineStack,
-  TextField,
-} from "@shopify/polaris";
-import enTranslations from "@shopify/polaris/locales/en.json";
-import "@shopify/polaris/build/esm/styles.css";
 import { authenticate } from "../shopify.server";
 
 const LOGO_URL =
@@ -1505,61 +1495,68 @@ export default function Index() {
             </div>
 
             <div className="search-row polaris-search-row">
-              <PolarisAppProvider i18n={enTranslations}>
-                <Card>
-                  <TextField
+              <s-section padding="base">
+                <s-stack direction="block" gap="base">
+                  <s-search-field
                     label="Search orders"
-                    labelHidden
+                    labelAccessibilityVisibility="exclusive"
                     value={deliveryDateSearch}
-                    onChange={applySearchValue}
-                    onClearButtonClick={() => applySearchValue("")}
-                    clearButton
-                    autoComplete="off"
                     placeholder="Search order #, customer, driver, or date"
-                  />
-                  <div style={{ marginTop: 12 }}>
-                    <InlineStack align="space-between" blockAlign="center" wrap>
-                      <ButtonGroup variant="segmented">
-                        <Button
-                          pressed={routeCourierFilter === "all"}
-                          onClick={() => {
-                            setRouteCourierFilter("all");
-                            setSelectedIds([]);
-                          }}
-                        >
-                          All
-                        </Button>
-                        <Button
-                          pressed={routeCourierFilter === "local"}
-                          onClick={() => {
-                            setRouteCourierFilter("local");
-                            setSelectedIds([]);
-                          }}
-                        >
-                          Local
-                        </Button>
-                        <Button
-                          pressed={routeCourierFilter === "courier"}
-                          onClick={() => {
-                            setRouteCourierFilter("courier");
-                            setSelectedIds([]);
-                          }}
-                        >
-                          Courier
-                        </Button>
-                      </ButtonGroup>
-                      <Button
+                    autocomplete="off"
+                    onInput={(event) =>
+                      applySearchValue(event.currentTarget.value)
+                    }
+                    onChange={(event) =>
+                      applySearchValue(event.currentTarget.value)
+                    }
+                  ></s-search-field>
+                  <s-stack
+                    direction="inline"
+                    gap="base"
+                    justifyContent="space-between"
+                    alignItems="center"
+                  >
+                    <s-stack direction="inline" gap="small-200">
+                      <s-press-button
+                        pressed={routeCourierFilter === "all"}
                         onClick={() => {
-                          applySearchValue("");
                           setRouteCourierFilter("all");
+                          setSelectedIds([]);
                         }}
                       >
-                        Clear
-                      </Button>
-                    </InlineStack>
-                  </div>
-                </Card>
-              </PolarisAppProvider>
+                        All
+                      </s-press-button>
+                      <s-press-button
+                        pressed={routeCourierFilter === "local"}
+                        onClick={() => {
+                          setRouteCourierFilter("local");
+                          setSelectedIds([]);
+                        }}
+                      >
+                        Local
+                      </s-press-button>
+                      <s-press-button
+                        pressed={routeCourierFilter === "courier"}
+                        onClick={() => {
+                          setRouteCourierFilter("courier");
+                          setSelectedIds([]);
+                        }}
+                      >
+                        Courier
+                      </s-press-button>
+                    </s-stack>
+                    <s-button
+                      variant="secondary"
+                      onClick={() => {
+                        applySearchValue("");
+                        setRouteCourierFilter("all");
+                      }}
+                    >
+                      Clear
+                    </s-button>
+                  </s-stack>
+                </s-stack>
+              </s-section>
             </div>
 
             {visibleOrders.length === 0 ? (
