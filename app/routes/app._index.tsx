@@ -7,12 +7,10 @@ const LOGO_URL =
 
 const SUPPORT_PHONE = "0480 079 218";
 const PACKING_SLIP_WORD_FONT_SIZE = 21;
-const ORDERS_FETCH_LIMIT = 1000;
-const ORDERS_PAGE_SIZE = 100;
-
-// Keep the page loader fast by limiting the maximum number of orders fetched.
-// This prevents Heroku H12 request timeouts when Shopify returns large order sets.
-// Increase the limit so older orders like #127210 can still be loaded and searched.
+// Keep this low to avoid Heroku H12 (30s) timeouts. Older orders are found via /app/order/lookup.
+const ORDERS_FETCH_LIMIT = 250;
+const ORDERS_PAGE_SIZE = 50;
+const ORDERS_LOADER_BUDGET_MS = 20000;
 
 type PrintMode =
   | "labels"
@@ -89,8 +87,17 @@ export const loader = async ({ request }: { request: Request }) => {
   const allEdges: any[] = [];
   let hasNextPage = true;
   let cursor: string | null = null;
+  const startedAt = Date.now();
 
   while (hasNextPage && allEdges.length < ORDERS_FETCH_LIMIT) {
+    // Stop early so Heroku's 30s router timeout is never hit.
+    if (Date.now() - startedAt > ORDERS_LOADER_BUDGET_MS) {
+      console.warn(
+        `Orders loader budget exceeded after ${allEdges.length} orders; returning partial list.`,
+      );
+      break;
+    }
+
     const first = Math.min(
       ORDERS_PAGE_SIZE,
       ORDERS_FETCH_LIMIT - allEdges.length,
@@ -142,7 +149,7 @@ export const loader = async ({ request }: { request: Request }) => {
                   value
                 }
 
-                lineItems(first: 100) {
+                lineItems(first: 50) {
                   edges {
                     node {
                       id
