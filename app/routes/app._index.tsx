@@ -816,9 +816,42 @@ export default function Index() {
           align-items: end;
         }
 
-        .polaris-search-row {
-          display: block;
-          grid-template-columns: none;
+        .search-row-filters {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          flex-wrap: wrap;
+          grid-column: 1 / -1;
+        }
+
+        .filter-chip-group {
+          display: inline-flex;
+          border: 1px solid #c9cccf;
+          border-radius: 8px;
+          overflow: hidden;
+          background: #fff;
+        }
+
+        .filter-chip {
+          min-height: 36px;
+          border: 0;
+          border-right: 1px solid #c9cccf;
+          background: #fff;
+          color: #202223;
+          font-size: 13px;
+          font-weight: 600;
+          padding: 8px 14px;
+          cursor: pointer;
+        }
+
+        .filter-chip:last-child {
+          border-right: 0;
+        }
+
+        .filter-chip.is-active {
+          background: #202223;
+          color: #fff;
         }
 
         .field label {
@@ -1494,69 +1527,63 @@ export default function Index() {
               </div>
             </div>
 
-            <div className="search-row polaris-search-row">
-              <s-section padding="base">
-                <s-stack direction="block" gap="base">
-                  <s-search-field
-                    label="Search orders"
-                    labelAccessibilityVisibility="exclusive"
-                    value={deliveryDateSearch}
-                    placeholder="Search order #, customer, driver, or date"
-                    autocomplete="off"
-                    onInput={(event) =>
-                      applySearchValue(event.currentTarget.value)
-                    }
-                    onChange={(event) =>
-                      applySearchValue(event.currentTarget.value)
-                    }
-                  ></s-search-field>
-                  <s-stack
-                    direction="inline"
-                    gap="base"
-                    justifyContent="space-between"
-                    alignItems="center"
+            <div className="search-row">
+              <div className="field" style={{ gridColumn: "1 / -1" }}>
+                <label htmlFor="order-search">Search orders</label>
+                <input
+                  id="order-search"
+                  className="search-input"
+                  type="search"
+                  value={deliveryDateSearch}
+                  onChange={(event) => applySearchValue(event.target.value)}
+                  placeholder="Search order #, customer, driver, or date"
+                  autoComplete="off"
+                />
+              </div>
+              <div className="search-row-filters">
+                <div className="filter-chip-group" role="group" aria-label="Route filter">
+                  <button
+                    type="button"
+                    className={`filter-chip${routeCourierFilter === "all" ? " is-active" : ""}`}
+                    onClick={() => {
+                      setRouteCourierFilter("all");
+                      setSelectedIds([]);
+                    }}
                   >
-                    <s-stack direction="inline" gap="small-200">
-                      <s-press-button
-                        pressed={routeCourierFilter === "all"}
-                        onClick={() => {
-                          setRouteCourierFilter("all");
-                          setSelectedIds([]);
-                        }}
-                      >
-                        All
-                      </s-press-button>
-                      <s-press-button
-                        pressed={routeCourierFilter === "local"}
-                        onClick={() => {
-                          setRouteCourierFilter("local");
-                          setSelectedIds([]);
-                        }}
-                      >
-                        Local
-                      </s-press-button>
-                      <s-press-button
-                        pressed={routeCourierFilter === "courier"}
-                        onClick={() => {
-                          setRouteCourierFilter("courier");
-                          setSelectedIds([]);
-                        }}
-                      >
-                        Courier
-                      </s-press-button>
-                    </s-stack>
-                    <s-button
-                      variant="secondary"
-                      onClick={() => {
-                        applySearchValue("");
-                        setRouteCourierFilter("all");
-                      }}
-                    >
-                      Clear
-                    </s-button>
-                  </s-stack>
-                </s-stack>
-              </s-section>
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    className={`filter-chip${routeCourierFilter === "local" ? " is-active" : ""}`}
+                    onClick={() => {
+                      setRouteCourierFilter("local");
+                      setSelectedIds([]);
+                    }}
+                  >
+                    Local
+                  </button>
+                  <button
+                    type="button"
+                    className={`filter-chip${routeCourierFilter === "courier" ? " is-active" : ""}`}
+                    onClick={() => {
+                      setRouteCourierFilter("courier");
+                      setSelectedIds([]);
+                    }}
+                  >
+                    Courier
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => {
+                    applySearchValue("");
+                    setRouteCourierFilter("all");
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
             </div>
 
             {visibleOrders.length === 0 ? (
@@ -3166,7 +3193,11 @@ function orderMatchesSearch(
   const orderNumber = extractOrderNumberQuery(rawSearch);
   if (orderNumber) {
     const nameDigits = String(order.name || "").replace(/\D/g, "");
-    return nameDigits === orderNumber;
+    return (
+      nameDigits === orderNumber ||
+      nameDigits.endsWith(orderNumber) ||
+      nameDigits.includes(orderNumber)
+    );
   }
 
   const searchDate = parseFlexibleDate(rawSearch);
