@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLoaderData, useRevalidator } from "react-router";
+import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import {
   AppProvider as PolarisAppProvider,
   ChoiceList,
@@ -549,65 +549,69 @@ export default function Index() {
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [ordersLimit, setOrdersLimit] = useState("20");
+  const [lookupOrders, setLookupOrders] = useState<Order[]>([]);
   const [printMode, setPrintMode] = useState<PrintMode>("labels");
   const [deliveryDateSearch, setDeliveryDateSearch] = useState("");
   const [routeCourierFilter, setRouteCourierFilter] = useState<
     "all" | "local" | "courier"
   >("all");
 
-  const filteredOrders = useMemo(() => {
-    const rawSearch = deliveryDateSearch.trim();
-    const search = normalizeSearchText(rawSearch);
-    const orderNumber = extractOrderNumberQuery(rawSearch);
+  const lookupFetcher = useFetcher<{ order: Order | null }>();
 
-    return orders.filter((order) => {
-      const routeText = normalizeSearchText(order.easyRoutesRoute);
-      const isCourierRoute = routeText.includes("courier");
-
-      if (routeCourierFilter === "local" && isCourierRoute) {
-        return false;
-      }
-
-      if (routeCourierFilter === "courier" && !isCourierRoute) {
-        return false;
-      }
-
-      if (!rawSearch) {
-        return true;
-      }
-
-      if (orderNumber) {
-        const nameDigits = String(order.name || "").replace(/\D/g, "");
-        return nameDigits === orderNumber;
-      }
-
-      if (!search) {
-        return true;
-      }
-
-      const searchableText = normalizeSearchText(
-        [
-          order.name,
-          order.customerName,
-          order.deliveryDate,
-          order.deliveryDay,
-          order.deliveryMethod,
-          order.easyRoutesRoute,
-          order.driverName,
-          formatShippingAddress(order),
-        ].join(" "),
-      );
-
-      if (searchableText.includes(search)) {
-        return true;
-      }
-
-      return search
-        .split(/\s+/)
-        .filter(Boolean)
-        .every((token) => searchableText.includes(token));
+  const allOrders = useMemo(() => {
+    const map = new Map<string, Order>();
+    orders.forEach((o) => map.set(o.id, o));
+    lookupOrders.forEach((o) => {
+      if (!map.has(o.id)) map.set(o.id, o);
     });
-  }, [orders, deliveryDateSearch, routeCourierFilter]);
+    return Array.from(map.values());
+  }, [orders, lookupOrders]);
+
+  const filteredOrders = allOrders.filter((order) =>
+    orderMatchesSearch(order, deliveryDateSearch, routeCourierFilter),
+  );
+
+  // Restore old order-number lookup for orders outside the loaded window.
+  useEffect(() => {
+    const orderNumber = extractOrderNumberQuery(deliveryDateSearch);
+    if (!orderNumber) {
+      setLookupOrders([]);
+      return;
+    }
+
+    const handle = window.setTimeout(() => {
+      lookupFetcher.load(
+        `/app/order/lookup?q=${encodeURIComponent(orderNumber)}`,
+      );
+    }, 250);
+
+    return () => window.clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deliveryDateSearch]);
+
+  useEffect(() => {
+    if (lookupFetcher.state !== "idle") return;
+    if (!lookupFetcher.data) return;
+
+    const orderNumber = extractOrderNumberQuery(deliveryDateSearch);
+    if (!orderNumber) {
+      setLookupOrders([]);
+      return;
+    }
+
+    const found = lookupFetcher.data.order;
+    if (!found) {
+      setLookupOrders([]);
+      return;
+    }
+
+    const foundDigits = String(found.name || "").replace(/\D/g, "");
+    if (foundDigits === orderNumber || foundDigits.endsWith(orderNumber)) {
+      setLookupOrders([found]);
+    } else {
+      setLookupOrders([]);
+    }
+  }, [lookupFetcher.state, lookupFetcher.data, deliveryDateSearch]);
 
   const polarisFilters = [
     {
@@ -3146,6 +3150,167 @@ function extractOrderNumberQuery(value: string) {
   const raw = (value || "").trim();
   const match = raw.match(/^#?(\d+)$/);
   return match ? match[1] : null;
+}
+
+function orderMatchesSearch(
+  order: Order,
+  rawInput: string,
+  routeCourierFilter: "all" | "local" | "courier",
+) {
+  const routeText = normalizeSearchText(order.easyRoutesRoute);
+  const isCourierRoute = routeText.includes("courier");
+
+  if (routeCourierFilter === "local" && isCourierRoute) {
+    return false;
+  }
+
+  if (routeCourierFilter === "courier" && !isCourierRoute) {
+    return false;
+  }
+
+  const rawSearch = (rawInput || "").trim();
+  if (!rawSearch) {
+    return true;
+  }
+
+  const orderNumber = extractOrderNumberQuery(rawSearch);
+  if (orderNumber) {
+    const nameDigits = String(order.name || "").replace(/\D/g, "");
+    return nameDigits === orderNumber;
+  }
+
+  const searchDate = parseFlexibleDate(rawSearch);
+  if (searchDate) {
+    const dateFields = [
+      order.deliveryDate,
+      order.deliveryDay,
+      order.easyRoutesRouteStart,
+      order.easyRoutesStopEta,
+      order.easyRoutesRoute,
+    ];
+
+    if (
+      dateFields.some((value) => {
+        const parsed = parseFlexibleDate(value || "");
+        return parsed ? sameDate(parsed, searchDate) : false;
+      })
+    ) {
+      return true;
+    }
+  }
+
+  const search = normalizeSearchText(rawSearch);
+  if (!search) {
+    return true;
+  }
+
+  const searchableText = normalizeSearchText(
+    [
+      order.name,
+      order.customerName,
+      order.deliveryDate,
+      order.deliveryDay,
+      order.deliveryMethod,
+      order.easyRoutesRoute,
+      order.easyRoutesRouteStart,
+      order.easyRoutesStopEta,
+      order.driverName,
+      formatShippingAddress(order),
+    ].join(" "),
+  );
+
+  if (searchableText.includes(search)) {
+    return true;
+  }
+
+  const tokens = search.split(/\s+/).filter(Boolean);
+  return (
+    tokens.length > 0 && tokens.every((token) => searchableText.includes(token))
+  );
+}
+
+const MONTH_INDEX: Record<string, number> = {
+  jan: 1,
+  january: 1,
+  feb: 2,
+  february: 2,
+  mar: 3,
+  march: 3,
+  apr: 4,
+  april: 4,
+  may: 5,
+  jun: 6,
+  june: 6,
+  jul: 7,
+  july: 7,
+  aug: 8,
+  august: 8,
+  sep: 9,
+  sept: 9,
+  september: 9,
+  oct: 10,
+  october: 10,
+  nov: 11,
+  november: 11,
+  dec: 12,
+  december: 12,
+};
+
+type ParsedDate = { year: number; month: number; day: number };
+
+function parseFlexibleDate(value: string): ParsedDate | null {
+  const raw = (value || "").trim();
+  if (!raw) return null;
+
+  let match = raw.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (match) {
+    return {
+      year: Number(match[1]),
+      month: Number(match[2]),
+      day: Number(match[3]),
+    };
+  }
+
+  match = raw.match(/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b/);
+  if (match) {
+    let year = Number(match[3]);
+    if (year < 100) year += 2000;
+    return {
+      year,
+      month: Number(match[2]),
+      day: Number(match[1]),
+    };
+  }
+
+  match = raw.match(/\b([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/);
+  if (match) {
+    const month = MONTH_INDEX[match[1].toLowerCase()];
+    if (month) {
+      return {
+        year: Number(match[3]),
+        month,
+        day: Number(match[2]),
+      };
+    }
+  }
+
+  match = raw.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+),?\s+(\d{4})\b/);
+  if (match) {
+    const month = MONTH_INDEX[match[2].toLowerCase()];
+    if (month) {
+      return {
+        year: Number(match[3]),
+        month,
+        day: Number(match[1]),
+      };
+    }
+  }
+
+  return null;
+}
+
+function sameDate(a: ParsedDate, b: ParsedDate) {
+  return a.year === b.year && a.month === b.month && a.day === b.day;
 }
 
 function chunkArray<T>(array: T[], size: number): T[][] {
