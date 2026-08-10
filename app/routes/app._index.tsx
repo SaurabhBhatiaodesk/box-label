@@ -7,7 +7,7 @@ const LOGO_URL =
 
 const SUPPORT_PHONE = "0480 079 218";
 const PACKING_SLIP_WORD_FONT_SIZE = 21;
-const ORDERS_FETCH_LIMIT = 250;
+const ORDERS_FETCH_LIMIT = 1000;
 const ORDERS_PAGE_SIZE = 100;
 
 // Keep the page loader fast by limiting the maximum number of orders fetched.
@@ -554,16 +554,27 @@ export default function Index() {
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [ordersLimit, setOrdersLimit] = useState("20");
+  const [lookupOrders, setLookupOrders] = useState<Order[]>([]);
   const [printMode, setPrintMode] = useState<PrintMode>("labels");
   const [deliveryDateSearch, setDeliveryDateSearch] = useState("");
   const [routeCourierFilter, setRouteCourierFilter] = useState<
     "all" | "local" | "courier"
   >("all");
 
+  // Combine server lookup results with loader orders (dedupe by id)
+  const allOrders = useMemo(() => {
+    const map = new Map<string, Order>();
+    lookupOrders.forEach((o) => map.set(o.id, o));
+    orders.forEach((o) => {
+      if (!map.has(o.id)) map.set(o.id, o);
+    });
+    return Array.from(map.values());
+  }, [orders, lookupOrders]);
+
   const filteredOrders = useMemo(() => {
     const search = normalizeSearchText(deliveryDateSearch);
 
-    return orders.filter((order) => {
+    return allOrders.filter((order) => {
       const routeText = normalizeSearchText(order.easyRoutesRoute);
       const isCourierRoute = routeText.includes("courier");
 
@@ -595,6 +606,40 @@ export default function Index() {
       return searchableText.includes(search);
     });
   }, [orders, deliveryDateSearch, routeCourierFilter]);
+
+  // When user types an order-number (e.g. "#127210" or "127210"), do a server-side lookup
+  useEffect(() => {
+    const m = (deliveryDateSearch || "").match(/^#?(\d+)$/);
+    if (!m) {
+      setLookupOrders([]);
+      return;
+    }
+
+    const num = m[1];
+
+    let aborted = false;
+
+    (async () => {
+      try {
+        const res = await fetch(`/order.lookup?q=${encodeURIComponent(num)}`);
+        if (!res.ok) return;
+        const json = await res.json();
+        if (aborted) return;
+        if (json?.order) {
+          setLookupOrders([json.order]);
+        } else {
+          setLookupOrders([]);
+        }
+      } catch (err) {
+        console.error('Order lookup failed:', err);
+        if (!aborted) setLookupOrders([]);
+      }
+    })();
+
+    return () => {
+      aborted = true;
+    };
+  }, [deliveryDateSearch]);
 
   const visibleOrders = useMemo(() => {
     return filteredOrders.slice(0, Number(ordersLimit));
@@ -671,9 +716,6 @@ export default function Index() {
 
         .app-root {
           min-height: 100vh;
-          background: #f6f6f7;
-          color: #202223;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
         }
 
         .screen-area {
@@ -1529,7 +1571,7 @@ export default function Index() {
             </div>
 
             {visibleOrders.length === 0 ? (
-              <div className="empty-state">No orders found.</div>
+              <div className="empty-state">Not found.</div>
             ) : (
               <div className="table-wrap">
                 <table className="data-table">
