@@ -563,10 +563,17 @@ export default function Index() {
   const [ordersLimit, setOrdersLimit] = useState("20");
   const [lookupOrders, setLookupOrders] = useState<Order[]>([]);
   const [printMode, setPrintMode] = useState<PrintMode>("labels");
+  // Uncontrolled search input — avoids Shopify iframe hydration swallowing controlled state.
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [deliveryDateSearch, setDeliveryDateSearch] = useState("");
   const [routeCourierFilter, setRouteCourierFilter] = useState<
     "all" | "local" | "courier"
   >("all");
+
+  const updateSearchFromInput = (value: string) => {
+    setDeliveryDateSearch(value);
+    setSelectedIds([]);
+  };
 
   const lookupFetcher = useFetcher<{ order: Order | null }>();
 
@@ -580,7 +587,6 @@ export default function Index() {
     return Array.from(map.values());
   }, [orders, lookupOrders]);
 
-  // Keep filtering plain (no useMemo) so search state always applies on each render.
   const filteredOrders = allOrders.filter((order) =>
     orderMatchesSearch(order, deliveryDateSearch, routeCourierFilter),
   );
@@ -1508,19 +1514,14 @@ export default function Index() {
                 </label>
                 <input
                   id="deliveryDateSearch"
+                  ref={searchInputRef}
                   className="search-input"
-                  type="search"
+                  type="text"
                   autoComplete="off"
                   spellCheck={false}
-                  value={deliveryDateSearch}
-                  onChange={(event) => {
-                    setDeliveryDateSearch(event.target.value);
-                    setSelectedIds([]);
-                  }}
+                  defaultValue=""
                   onInput={(event) => {
-                    const nextValue = (event.target as HTMLInputElement).value;
-                    setDeliveryDateSearch(nextValue);
-                    setSelectedIds([]);
+                    updateSearchFromInput(event.currentTarget.value);
                   }}
                   placeholder="Example: #127210 / 21/05/2026 / Trevor"
                 />
@@ -1555,7 +1556,10 @@ export default function Index() {
                 className="button-secondary"
                 type="button"
                 onClick={() => {
-                  setDeliveryDateSearch("");
+                  if (searchInputRef.current) {
+                    searchInputRef.current.value = "";
+                  }
+                  updateSearchFromInput("");
                   setRouteCourierFilter("all");
                   setSelectedIds([]);
                 }}
