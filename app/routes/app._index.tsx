@@ -563,17 +563,27 @@ export default function Index() {
   const [ordersLimit, setOrdersLimit] = useState("20");
   const [lookupOrders, setLookupOrders] = useState<Order[]>([]);
   const [printMode, setPrintMode] = useState<PrintMode>("labels");
-  // Uncontrolled search input — avoids Shopify iframe hydration swallowing controlled state.
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [deliveryDateSearch, setDeliveryDateSearch] = useState("");
   const [routeCourierFilter, setRouteCourierFilter] = useState<
     "all" | "local" | "courier"
   >("all");
 
-  const updateSearchFromInput = (value: string) => {
+  const syncSearchFromDom = () => {
+    const value = searchInputRef.current?.value ?? "";
     setDeliveryDateSearch(value);
     setSelectedIds([]);
   };
+
+  // Native listener — survives Shopify iframe hydration issues that break React onInput.
+  useEffect(() => {
+    const input = searchInputRef.current;
+    if (!input) return;
+
+    const onInput = () => syncSearchFromDom();
+    input.addEventListener("input", onInput);
+    return () => input.removeEventListener("input", onInput);
+  }, []);
 
   const lookupFetcher = useFetcher<{ order: Order | null }>();
 
@@ -1520,8 +1530,11 @@ export default function Index() {
                   autoComplete="off"
                   spellCheck={false}
                   defaultValue=""
-                  onInput={(event) => {
-                    updateSearchFromInput(event.currentTarget.value);
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      syncSearchFromDom();
+                    }
                   }}
                   placeholder="Example: #127210 / 21/05/2026 / Trevor"
                 />
@@ -1553,13 +1566,21 @@ export default function Index() {
               </div>
 
               <button
+                className="button"
+                type="button"
+                onClick={syncSearchFromDom}
+              >
+                Search
+              </button>
+
+              <button
                 className="button-secondary"
                 type="button"
                 onClick={() => {
                   if (searchInputRef.current) {
                     searchInputRef.current.value = "";
                   }
-                  updateSearchFromInput("");
+                  setDeliveryDateSearch("");
                   setRouteCourierFilter("all");
                   setSelectedIds([]);
                 }}
