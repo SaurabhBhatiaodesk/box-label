@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useFetcher, useLoaderData, useRevalidator } from "react-router";
+import {
+  useFetcher,
+  useLoaderData,
+  useRevalidator,
+  useSearchParams,
+  useSubmit,
+} from "react-router";
 import { authenticate } from "../shopify.server";
 
 const LOGO_URL =
@@ -563,27 +569,17 @@ export default function Index() {
   const [ordersLimit, setOrdersLimit] = useState("20");
   const [lookupOrders, setLookupOrders] = useState<Order[]>([]);
   const [printMode, setPrintMode] = useState<PrintMode>("labels");
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const [deliveryDateSearch, setDeliveryDateSearch] = useState("");
-  const [routeCourierFilter, setRouteCourierFilter] = useState<
-    "all" | "local" | "courier"
-  >("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const submit = useSubmit();
 
-  const syncSearchFromDom = () => {
-    const value = searchInputRef.current?.value ?? "";
-    setDeliveryDateSearch(value);
-    setSelectedIds([]);
-  };
-
-  // Native listener — survives Shopify iframe hydration issues that break React onInput.
-  useEffect(() => {
-    const input = searchInputRef.current;
-    if (!input) return;
-
-    const onInput = () => syncSearchFromDom();
-    input.addEventListener("input", onInput);
-    return () => input.removeEventListener("input", onInput);
-  }, []);
+  // URL is the source of truth — survives Shopify iframe input/state bugs.
+  const deliveryDateSearch = searchParams.get("q") || "";
+  const routeCourierFilter = (
+    searchParams.get("route") === "local" ||
+    searchParams.get("route") === "courier"
+      ? searchParams.get("route")
+      : "all"
+  ) as "all" | "local" | "courier";
 
   const lookupFetcher = useFetcher<{ order: Order | null }>();
 
@@ -1517,25 +1513,29 @@ export default function Index() {
               </div>
             </div>
 
-            <div className="search-row">
+            <form
+              className="search-row"
+              method="get"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const formData = new FormData(event.currentTarget);
+                submit(formData, { method: "get", replace: true });
+                setSelectedIds([]);
+              }}
+            >
               <div className="field">
                 <label htmlFor="deliveryDateSearch">
                   Search by order # / delivery date / EasyRoutes date / driver
                 </label>
                 <input
                   id="deliveryDateSearch"
-                  ref={searchInputRef}
+                  key={`q-${deliveryDateSearch}`}
                   className="search-input"
                   type="text"
+                  name="q"
                   autoComplete="off"
                   spellCheck={false}
-                  defaultValue=""
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      syncSearchFromDom();
-                    }
-                  }}
+                  defaultValue={deliveryDateSearch}
                   placeholder="Example: #127210 / 21/05/2026 / Trevor"
                 />
               </div>
@@ -1547,13 +1547,9 @@ export default function Index() {
                 <select
                   id="routeCourierFilter"
                   className="select-box"
-                  value={routeCourierFilter}
-                  onChange={(event) => {
-                    setRouteCourierFilter(
-                      event.target.value as "all" | "local" | "courier",
-                    );
-                    setSelectedIds([]);
-                  }}
+                  name="route"
+                  defaultValue={routeCourierFilter}
+                  key={`route-${routeCourierFilter}`}
                 >
                   <option value="all">All routes</option>
                   <option value="local">
@@ -1565,11 +1561,7 @@ export default function Index() {
                 </select>
               </div>
 
-              <button
-                className="button"
-                type="button"
-                onClick={syncSearchFromDom}
-              >
+              <button className="button" type="submit">
                 Search
               </button>
 
@@ -1577,17 +1569,13 @@ export default function Index() {
                 className="button-secondary"
                 type="button"
                 onClick={() => {
-                  if (searchInputRef.current) {
-                    searchInputRef.current.value = "";
-                  }
-                  setDeliveryDateSearch("");
-                  setRouteCourierFilter("all");
+                  setSearchParams({}, { replace: true });
                   setSelectedIds([]);
                 }}
               >
                 Clear Search
               </button>
-            </div>
+            </form>
 
             {visibleOrders.length === 0 ? (
               <div className="empty-state">Not found.</div>
