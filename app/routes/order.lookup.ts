@@ -84,7 +84,7 @@ export const loader = async ({ request }: { request: Request }) => {
     `,
       {
         variables: {
-          query: `name:${q}`,
+          query: `name:*${q}* OR name:${q} OR name:#${q}`,
         },
       },
     );

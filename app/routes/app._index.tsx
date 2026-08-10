@@ -610,7 +610,8 @@ export default function Index() {
       if (numericSearch) {
         return (
           searchableText.includes(numericSearch) ||
-          normalizeSearchText(order.name).includes(numericSearch)
+          normalizeSearchText(order.name).includes(numericSearch) ||
+          normalizeSearchText(order.id).includes(numericSearch)
         );
       }
 
