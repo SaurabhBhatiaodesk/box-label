@@ -607,15 +607,19 @@ export default function Index() {
   }, [lookupFetcher.state, lookupFetcher.data, deliveryDateSearch]);
 
   useEffect(() => {
+    const getSearchField = () =>
+      searchFieldRef.current ??
+      (document.getElementById(
+        "order-search",
+      ) as HTMLElementTagNameMap["s-search-field"] | null);
+
     const syncSearchValue = () => {
-      const searchField =
-        searchFieldRef.current ??
-        (document.getElementById(
-          "order-search",
-        ) as HTMLElementTagNameMap["s-search-field"] | null);
+      const searchField = getSearchField();
       if (!searchField) return;
 
-      const nextValue = searchField.value || "";
+      const internalInput =
+        searchField.shadowRoot?.querySelector<HTMLInputElement>("input");
+      const nextValue = internalInput?.value ?? searchField.value ?? "";
       if (nextValue === searchValueRef.current) return;
 
       searchValueRef.current = nextValue;
@@ -623,8 +627,26 @@ export default function Index() {
       setSelectedIds([]);
     };
 
-    const pollingHandle = window.setInterval(syncSearchValue, 100);
-    return () => window.clearInterval(pollingHandle);
+    const attachAndSync = () => {
+      const searchField = getSearchField();
+      if (searchField) {
+        searchField.oninput = syncSearchValue;
+        searchField.onchange = syncSearchValue;
+      }
+      syncSearchValue();
+    };
+
+    attachAndSync();
+    const pollingHandle = window.setInterval(attachAndSync, 100);
+
+    return () => {
+      window.clearInterval(pollingHandle);
+      const searchField = getSearchField();
+      if (searchField) {
+        searchField.oninput = null;
+        searchField.onchange = null;
+      }
+    };
   }, []);
 
   const visibleOrders = useMemo(() => {
@@ -1553,6 +1575,7 @@ export default function Index() {
                 <s-stack direction="block" gap="base">
                   <s-search-field
                     id="order-search"
+                    name="order-search"
                     ref={searchFieldRef}
                     label="Search orders"
                     value={deliveryDateSearch}
