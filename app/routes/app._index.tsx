@@ -7,7 +7,7 @@ const LOGO_URL =
 
 const SUPPORT_PHONE = "0480 079 218";
 const PACKING_SLIP_WORD_FONT_SIZE = 21;
-const ORDERS_FETCH_LIMIT = 1500;
+const ORDERS_FETCH_LIMIT = 250;
 const ORDERS_PAGE_SIZE = 100;
 
 // Keep the page loader fast by limiting the maximum number of orders fetched.
@@ -96,8 +96,10 @@ export const loader = async ({ request }: { request: Request }) => {
       ORDERS_FETCH_LIMIT - allEdges.length,
     );
 
-    const response: any = await admin.graphql(
-      `#graphql
+    let data: any = null;
+    try {
+      const response: any = await admin.graphql(
+        `#graphql
         query GetOrders($first: Int!, $after: String) {
           orders(first: $first, after: $after, sortKey: CREATED_AT, reverse: true, query: "status:any") {
             edges {
@@ -171,21 +173,27 @@ export const loader = async ({ request }: { request: Request }) => {
           }
         }
       `,
-      {
-        variables: {
-          first,
-          after: cursor,
+        {
+          variables: {
+            first,
+            after: cursor,
+          },
         },
-      },
-    );
-
-    const data: any = await response.json();
-
-    if (data?.errors) {
-      console.error(
-        "Shopify GraphQL errors:",
-        JSON.stringify(data.errors, null, 2),
       );
+
+      data = await response.json();
+
+      if (data?.errors) {
+        console.error(
+          "Shopify GraphQL errors:",
+          JSON.stringify(data.errors, null, 2),
+        );
+        // Stop fetching more pages but continue with whatever we have so app doesn't crash.
+        break;
+      }
+    } catch (err) {
+      console.error("GraphQL fetch failed:", err);
+      // Break out to avoid crashing the server on transient API errors.
       break;
     }
 
