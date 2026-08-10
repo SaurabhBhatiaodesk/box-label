@@ -572,7 +572,10 @@ export default function Index() {
   }, [orders, lookupOrders]);
 
   const filteredOrders = useMemo(() => {
-    const search = normalizeSearchText(deliveryDateSearch);
+    const rawSearch = deliveryDateSearch.trim();
+    const search = normalizeSearchText(rawSearch);
+    const numberMatch = rawSearch.match(/^#?(\d+)$/);
+    const numericSearch = numberMatch ? numberMatch[1] : null;
 
     return allOrders.filter((order) => {
       const routeText = normalizeSearchText(order.easyRoutesRoute);
@@ -589,6 +592,7 @@ export default function Index() {
       if (!search) {
         return true;
       }
+
       const searchableText = normalizeSearchText(
         [
           order.id,
@@ -603,9 +607,16 @@ export default function Index() {
         ].join(" "),
       );
 
+      if (numericSearch) {
+        return (
+          searchableText.includes(numericSearch) ||
+          normalizeSearchText(order.name).includes(numericSearch)
+        );
+      }
+
       return searchableText.includes(search);
     });
-  }, [orders, deliveryDateSearch, routeCourierFilter]);
+  }, [allOrders, deliveryDateSearch, routeCourierFilter]);
 
   // When user types an order-number (e.g. "#127210" or "127210"), do a server-side lookup
   useEffect(() => {
