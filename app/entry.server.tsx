@@ -32,6 +32,12 @@ export default async function handleRequest(
           const stream = createReadableStreamFromReadable(body);
 
           responseHeaders.set("Content-Type", "text/html");
+          // Always revalidate HTML so deploys are not stuck behind browser/Shopify iframe cache.
+          responseHeaders.set(
+            "Cache-Control",
+            "no-store, no-cache, must-revalidate, max-age=0",
+          );
+          responseHeaders.set("Pragma", "no-cache");
           resolve(
             new Response(stream, {
               headers: responseHeaders,
