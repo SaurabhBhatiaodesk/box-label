@@ -581,6 +581,32 @@ export default function Index() {
       : "all"
   ) as "all" | "local" | "courier";
 
+  // Local draft so typing feels instant; URL updates on debounce for filtering.
+  const [searchDraft, setSearchDraft] = useState(deliveryDateSearch);
+
+  useEffect(() => {
+    setSearchDraft(deliveryDateSearch);
+  }, [deliveryDateSearch]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      const nextQ = searchDraft.trim();
+      const currentQ = (searchParams.get("q") || "").trim();
+      if (nextQ === currentQ) return;
+
+      const next = new URLSearchParams(searchParams);
+      if (nextQ) next.set("q", nextQ);
+      else next.delete("q");
+      if (routeCourierFilter !== "all") next.set("route", routeCourierFilter);
+      else next.delete("route");
+
+      setSearchParams(next, { replace: true });
+      setSelectedIds([]);
+    }, 300);
+
+    return () => window.clearTimeout(handle);
+  }, [searchDraft, searchParams, routeCourierFilter, setSearchParams]);
+
   const lookupFetcher = useFetcher<{ order: Order | null }>();
 
   // Prefer loader orders (richer fields). Only append lookup hits that are missing.
@@ -594,12 +620,12 @@ export default function Index() {
   }, [orders, lookupOrders]);
 
   const filteredOrders = allOrders.filter((order) =>
-    orderMatchesSearch(order, deliveryDateSearch, routeCourierFilter),
+    orderMatchesSearch(order, searchDraft, routeCourierFilter),
   );
 
   // When user types an order-number (e.g. "#127210" or "127210"), do a server-side lookup.
   useEffect(() => {
-    const orderNumber = extractOrderNumberQuery(deliveryDateSearch);
+    const orderNumber = extractOrderNumberQuery(searchDraft);
     if (!orderNumber) {
       setLookupOrders([]);
       return;
@@ -613,13 +639,13 @@ export default function Index() {
 
     return () => window.clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only search text
-  }, [deliveryDateSearch]);
+  }, [searchDraft]);
 
   useEffect(() => {
     if (lookupFetcher.state !== "idle") return;
     if (!lookupFetcher.data) return;
 
-    const orderNumber = extractOrderNumberQuery(deliveryDateSearch);
+    const orderNumber = extractOrderNumberQuery(searchDraft);
     if (!orderNumber) {
       setLookupOrders([]);
       return;
@@ -638,7 +664,7 @@ export default function Index() {
     } else {
       setLookupOrders([]);
     }
-  }, [lookupFetcher.state, lookupFetcher.data, deliveryDateSearch]);
+  }, [lookupFetcher.state, lookupFetcher.data, searchDraft]);
 
   const visibleOrders = useMemo(() => {
     return filteredOrders.slice(0, Number(ordersLimit));
@@ -1529,13 +1555,15 @@ export default function Index() {
                 </label>
                 <input
                   id="deliveryDateSearch"
-                  key={`q-${deliveryDateSearch}`}
                   className="search-input"
                   type="text"
                   name="q"
                   autoComplete="off"
                   spellCheck={false}
-                  defaultValue={deliveryDateSearch}
+                  value={searchDraft}
+                  onChange={(event) => {
+                    setSearchDraft(event.target.value);
+                  }}
                   placeholder="Example: #127210 / 21/05/2026 / Trevor"
                 />
               </div>
@@ -1548,8 +1576,20 @@ export default function Index() {
                   id="routeCourierFilter"
                   className="select-box"
                   name="route"
-                  defaultValue={routeCourierFilter}
-                  key={`route-${routeCourierFilter}`}
+                  value={routeCourierFilter}
+                  onChange={(event) => {
+                    const nextRoute = event.target.value as
+                      | "all"
+                      | "local"
+                      | "courier";
+                    const next = new URLSearchParams(searchParams);
+                    if (searchDraft.trim()) next.set("q", searchDraft.trim());
+                    else next.delete("q");
+                    if (nextRoute === "all") next.delete("route");
+                    else next.set("route", nextRoute);
+                    setSearchParams(next, { replace: true });
+                    setSelectedIds([]);
+                  }}
                 >
                   <option value="all">All routes</option>
                   <option value="local">
@@ -1561,14 +1601,11 @@ export default function Index() {
                 </select>
               </div>
 
-              <button className="button" type="submit">
-                Search
-              </button>
-
               <button
                 className="button-secondary"
                 type="button"
                 onClick={() => {
+                  setSearchDraft("");
                   setSearchParams({}, { replace: true });
                   setSelectedIds([]);
                 }}
