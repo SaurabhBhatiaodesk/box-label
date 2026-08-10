@@ -3089,7 +3089,12 @@ function normalizeKey(value: string) {
 }
 
 function normalizeSearchText(value: string) {
-  return value.toLowerCase().replace(/,/g, "").replace(/\s+/g, " ").trim();
+  return (value || "")
+    .toLowerCase()
+    .replace(/#/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function chunkArray<T>(array: T[], size: number): T[][] {
